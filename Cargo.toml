@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rayon = { version = "1.10" }
 libcint = { version = "0.1", features = ["build_from_source", "static"] }
 rstsr = { version = "*", features = ["linalg", "sci"], path = "/home/a/Git-Repo/rstsr/rstsr" }
 
