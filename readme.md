@@ -4,6 +4,8 @@
 
 该仓库将使用 [RSTSR](https://github.com/RESTGroup/rstsr) ([REST](https://gitee.com/RESTGroup/REST) 子项目) 作为数学库工具，[libcint](https://github/sunqm/libcint) (Rust [binding and wrapper](https://github.com/ajz34/libcint-rs)) 作为电子积分引擎。我们将展示 RSTSR 在单一语言框架 (Rust) 下，可以同时兼顾**开发效率**与**运行效率**。
 
+> 这里的**高效**，是在不考虑许多工程要求的情况下的高性能。工程要求包括有限的内存、硬盘空间、契合计算化学程序架构等等；引入这些工程要求将会增加代码复杂性，不适合演示用途。
+
 **目前该仓库尚未完成。**
 
 待完成目标：
