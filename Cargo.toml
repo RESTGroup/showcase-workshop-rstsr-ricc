@@ -6,9 +6,8 @@ edition = "2024"
 [dependencies]
 rayon = { version = "1.10" }
 libcint = { version = "0.1", features = ["build_from_source", "static"] }
-rstsr = { version = "*", features = ["linalg", "sci"], path = "/home/a/Git-Repo/rstsr/rstsr" }
-
-rstsr-openblas = { version = "*", path = "/home/a/Git-Repo/rstsr/rstsr-openblas", optional = true }
+rstsr = { version = "0.3.9", features = ["linalg", "sci"] }
+rstsr-openblas = { version = "0.3.9", features = ["openmp"], optional = true }
 
 [features]
 use_openblas = ["dep:rstsr-openblas", "rstsr/openblas", "rstsr-openblas/openmp"]
