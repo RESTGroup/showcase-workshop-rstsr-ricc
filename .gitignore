@@ -7,7 +7,7 @@ tarpaulin-report.html
 .vscode
 .idea
 book
-*.npy
+# *.npy
 
 # bindgen
 blas_bindgen.h

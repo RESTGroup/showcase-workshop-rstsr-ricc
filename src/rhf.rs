@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-const NITER: usize = 40; // hardcoded SCF iterations
+pub const NITER: usize = 40; // hardcoded SCF iterations
 
 pub struct RHFResults {
     pub mo_coeff: Tsr,
@@ -86,7 +86,7 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
         let occ_coeff = mo_coeff.i((.., ..nocc));
         let scr = (cderi.reshape([nao, nao * naux]).t() % occ_coeff).into_shape([nao, naux, nocc]);
         let scr_flat = scr.reshape([nao, naux * nocc]);
-        2.0_f64 * &scr_flat % scr_flat.t()
+        2.0_f64 * (&scr_flat % scr_flat.t())
     };
 
     let mut dm = ovlp.zeros_like();

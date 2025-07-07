@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 rayon = { version = "1.10" }
+clap = { version = "4.5", features = ["derive"] }
+npyz = { version = "0.8" }
+
 libcint = { version = "0.1", features = ["build_from_source", "static"] }
 rstsr = { version = "0.3.9", features = ["linalg", "sci"] }
 rstsr-openblas = { version = "0.3.9", features = ["openmp"], optional = true }
