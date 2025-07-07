@@ -1,0 +1,11 @@
+[package]
+name = "showcase-workshop-rstsr-ricc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libcint = { version = "0.1", features = ["build_from_source", "static"] }
+rstsr = { version = "*", features = ["linalg", "sci"], path = "/home/a/Git-Repo/rstsr/rstsr" }
+
+[profile.dev]
+opt-level = 2
