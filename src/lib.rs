@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod diis;
 pub mod rhf_slow;
 pub mod ri_rccsd;
 pub mod ri_rccsdt;

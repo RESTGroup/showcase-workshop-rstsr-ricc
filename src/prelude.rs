@@ -2,6 +2,7 @@
 
 /* #region for API callers */
 
+pub use crate::diis::{DIISIncore, DIISIncoreFlags};
 pub use crate::structs::*;
 
 // RSTSR backend specification

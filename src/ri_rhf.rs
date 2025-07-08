@@ -1,6 +1,8 @@
 use crate::prelude::*;
 
-const NITER: usize = 40;
+const MAX_ITER: usize = 64;
+const TOL_E: f64 = 1e-8;
+const TOL_D: f64 = 1e-5;
 
 pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
     let time = std::time::Instant::now();
@@ -50,20 +52,60 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
         2.0_f64 * (scr_xob_flat.t() % &scr_xob_flat)
     };
 
-    let mut dm = ovlp.zeros_like();
+    let mut dm = rt::zeros(([nao, nao], &device));
     let mut mo_coeff = rt::zeros(([nao, nao], &device));
     let mut mo_energy = rt::zeros(([nao], &device));
-    for _ in 0..NITER {
-        let fock = &hcore + get_j(dm.view()) - 0.5_f64 * get_k(mo_coeff.view());
+    let mut diis_obj = DIISIncore::new(DIISIncoreFlags::default(), &device);
+    let mut old_dm = rt::zeros(([nao, nao], &device));
+    let mut e_tot_old = 0.0;
+    let mut converged = false;
+    let mut niter = 0;
+
+    for _ in 0..MAX_ITER {
+        niter += 1;
+
+        // j/k evaluation
+        let j = get_j(dm.view());
+        let k = get_k(mo_coeff.view());
+
+        // fock matrix and energy evaluation
+        let e_elec = ((&hcore + 0.5_f64 * &j - 0.25_f64 * &k) * &dm).sum();
+        let e_tot = e_nuc + e_elec;
+        let mut fock = &hcore + &j - 0.5_f64 * &k;
+
+        // diis update
+        if niter > 2 {
+            fock = diis_obj.update(fock, None, None).into_shape([nao, nao]);
+        }
+
+        // new density and coefficients
         (mo_energy, mo_coeff) = rt::linalg::eigh((fock.view(), ovlp.view())).into();
         dm = 2.0_f64 * mo_coeff.i((.., ..nocc)) % mo_coeff.i((.., ..nocc)).t();
+
+        // convergence check
+        let e_tot_diff = (e_tot - e_tot_old).abs();
+        let dm_diff = (&dm - &old_dm).l2_norm() / (dm.size() as f64).sqrt();
+        println!("Iteration {niter:>2}: E_tot = {e_tot:20.12}, E_diff = {e_tot_diff:8.2e}, DM_diff = {dm_diff:8.2e}");
+        if e_tot_diff < TOL_E && dm_diff < TOL_D {
+            converged = true;
+            break;
+        }
+        e_tot_old = e_tot;
+        old_dm = dm.clone();
     }
-    let eng_scratch = &hcore + 0.5_f64 * get_j(dm.view()) - 0.25_f64 * get_k(mo_coeff.view());
-    let e_elec = (&dm * &eng_scratch).sum();
+
+    if !converged {
+        panic!("RI-RHF did not converge after {MAX_ITER} iterations");
+    }
+
+    // fock has been updated by diis, so we need to recompute j/k
+    let j = get_j(dm.view());
+    let k = get_k(mo_coeff.view());
+    let e_elec = ((&hcore + 0.5_f64 * &j - 0.25_f64 * &k) * &dm).sum();
     let e_tot = e_nuc + e_elec;
     println!("Total elec energy: {e_elec}");
     println!("Total RHF energy: {e_tot}");
-    println!("Elapsed time for RI-RHF: {:.2?} in {NITER} iterations", time.elapsed());
+    println!("Elapsed time for RI-RHF: {:.2?} in {niter} iterations", time.elapsed());
 
     RHFResults { mo_energy, mo_coeff, dm, e_nuc, e_elec, e_tot }
 }
