@@ -22,6 +22,7 @@ pub(crate) use itertools::*;
 pub(crate) use libcint::prelude::*;
 pub(crate) use rayon::prelude::*;
 pub(crate) use rstsr::prelude::*;
+pub(crate) use std::sync::{Arc, Mutex};
 
 pub(crate) use crate::*;
 

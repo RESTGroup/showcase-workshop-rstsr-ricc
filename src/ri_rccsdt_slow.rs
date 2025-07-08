@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use std::sync::{Arc, Mutex};
 
 pub(crate) fn prepare_intermediates(
     mol_info: &RCCSDInfo,

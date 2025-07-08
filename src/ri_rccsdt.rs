@@ -1,6 +1,4 @@
 use crate::prelude::*;
-use crate::ri_rccsdt_slow::*;
-use std::sync::{Arc, Mutex};
 
 pub struct TransposedIndices {
     pub tr_012: Vec<usize>,
@@ -132,7 +130,7 @@ pub fn get_riccsd_pt_energy(
 
     // prepare intermediates
     let timer = std::time::Instant::now();
-    let intermediates = prepare_intermediates(mol_info, ccsd_intermediates, ccsd_results);
+    let intermediates = ri_rccsdt_slow::prepare_intermediates(mol_info, ccsd_intermediates, ccsd_results);
     let abc_list =
         (0..nvir).flat_map(|a| (0..a + 1).flat_map(move |b| (0..b + 1).map(move |c| [a, b, c]))).collect::<Vec<_>>();
     println!("Time elapsed (CCSD(T) preparation): {:?}", timer.elapsed());
