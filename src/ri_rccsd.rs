@@ -520,10 +520,26 @@ pub fn get_amplitude_from_rhs(mol_info: &RCCSDInfo, rhs1: Tsr, rhs2: Tsr) -> (Ts
     (t1_new, t2_new)
 }
 
+pub fn diis_concate_amplitude(t1: &Tsr, t2: &Tsr) -> Tsr {
+    let nocc = t1.shape()[0];
+    let nvir = t1.shape()[1];
+    let mut cat = rt::zeros(([nocc * nvir + nocc * nvir * nocc * nvir], t1.device()));
+    cat.i_mut(..nocc * nvir).assign(t1.reshape(-1));
+    cat.i_mut(nocc * nvir..).assign(t2.reshape(-1));
+    cat
+}
+
+pub fn diis_split_amplitude(cat: &Tsr, nocc: usize, nvir: usize) -> (Tsr, Tsr) {
+    let t1 = cat.i(..nocc * nvir).into_shape((nocc, nvir));
+    let t2 = cat.i(nocc * nvir..).into_shape((nocc, nocc, nvir, nvir));
+    (t1, t2)
+}
+
 pub fn update_riccsd_amplitude(
     mol_info: &RCCSDInfo,
     intermediates: &mut RCCSDIntermediates,
     cc_info: &RCCSDResults,
+    diis_obj: &mut DIISIncore,
 ) -> RCCSDResults {
     let timer_outer = std::time::Instant::now();
 
@@ -565,6 +581,12 @@ pub fn update_riccsd_amplitude(
     println!("Time elapsed (update_t): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
+    let t_vec = diis_concate_amplitude(&t1_new, &t2_new);
+    let t_vec = diis_obj.update(t_vec, None, None);
+    let (t1_new, t2_new) = diis_split_amplitude(&t_vec, mol_info.nocc(), mol_info.nvir());
+    println!("Time elapsed (diis update): {:?}", timer.elapsed());
+
+    let timer = std::time::Instant::now();
     get_riccsd_intermediates_1(mol_info, intermediates, &t1_new, &t2_new);
     println!("Time elapsed (intermediates_1): {:?}", timer.elapsed());
 
@@ -580,6 +602,8 @@ pub fn update_riccsd_amplitude(
 }
 
 pub fn riccsd_iteration(mol_info: &RCCSDInfo, cc_config: &CCSDConfig) -> (RCCSDResults, RCCSDIntermediates) {
+    let time_outer = std::time::Instant::now();
+
     // cderi ao2mo
     let timer = std::time::Instant::now();
     let mut intermediates = RCCSDIntermediates::default();
@@ -592,6 +616,10 @@ pub fn riccsd_iteration(mol_info: &RCCSDInfo, cc_config: &CCSDConfig) -> (RCCSDR
     println!("Initial energy (MP2): {:?}", ccsd_results.e_corr);
     println!("Time elapsed (initial guess): {:?}", timer.elapsed());
 
+    // diis preparation
+    let device = mol_info.mo_coeff.device().clone();
+    let mut diis_obj = DIISIncore::new(DIISIncoreFlags::default(), &device);
+
     // intermediates_1 should be initialized first before iteration
     let timer = std::time::Instant::now();
     get_riccsd_intermediates_1(mol_info, &mut intermediates, &ccsd_results.t1, &ccsd_results.t2);
@@ -600,7 +628,7 @@ pub fn riccsd_iteration(mol_info: &RCCSDInfo, cc_config: &CCSDConfig) -> (RCCSDR
     for niter in 0..cc_config.max_cycle {
         let timer = std::time::Instant::now();
         println!("Iteration: {:?}", niter);
-        let ccsd_results_new = update_riccsd_amplitude(mol_info, &mut intermediates, &ccsd_results);
+        let ccsd_results_new = update_riccsd_amplitude(mol_info, &mut intermediates, &ccsd_results, &mut diis_obj);
 
         println!("    Energy: {:?}", ccsd_results_new.e_corr);
         let diff_eng = ccsd_results_new.e_corr - ccsd_results.e_corr;
@@ -612,6 +640,7 @@ pub fn riccsd_iteration(mol_info: &RCCSDInfo, cc_config: &CCSDConfig) -> (RCCSDR
 
         if diff_eng.abs() < cc_config.conv_tol_e && norm_t1 < cc_config.conv_tol_t1 && norm_t2 < cc_config.conv_tol_t2 {
             println!("CCSD converged in {niter} iterations.");
+            println!("Time elapsed (CCSD total time): {:?}", time_outer.elapsed());
             return (ccsd_results_new, intermediates);
         }
         ccsd_results = ccsd_results_new;

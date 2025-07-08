@@ -123,6 +123,7 @@ pub fn get_riccsd_pt_energy(
     ccsd_intermediates: &RCCSDIntermediates,
     ccsd_results: &RCCSDResults,
 ) -> RCCSDTResults {
+    let time_outer = std::time::Instant::now();
     let nvir = mol_info.nvir();
 
     let timer = std::time::Instant::now();
@@ -139,6 +140,7 @@ pub fn get_riccsd_pt_energy(
         *e_corr_pt.lock().unwrap() += e_pt_inc;
     });
     println!("Time elapsed (CCSD(T) computation): {:?}", timer.elapsed());
+    println!("Time elapsed (CCSD(T) total time): {:?}", time_outer.elapsed());
 
     let e_corr_pt = *e_corr_pt.lock().unwrap();
     RCCSDTResults { e_corr_pt }

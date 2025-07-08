@@ -1,8 +1,8 @@
 use crate::prelude::*;
 
 const MAX_ITER: usize = 64;
-const TOL_E: f64 = 1e-8;
-const TOL_D: f64 = 1e-5;
+const TOL_E: f64 = 1e-9;
+const TOL_D: f64 = 1e-6;
 
 pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
     let time = std::time::Instant::now();
