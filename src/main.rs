@@ -46,6 +46,9 @@ enum Command {
     #[clap(name = "ri-rhf", about = "Run a minimal RI-RHF calculation")]
     RiRhf(CliArgs),
 
+    #[clap(name = "ri-rhf-faster", about = "Run a minimal RI-RHF calculation (faster than ri-rhf)")]
+    RiRhfFaster(CliArgs),
+
     #[clap(name = "ri-rccsd", about = "Run a minimal RI-CCSD calculation")]
     RiRccsd(CliArgs),
 
@@ -81,9 +84,18 @@ fn main() {
             rhf::minimal_rhf(&cint_data);
         },
         Command::RiRhf(cli_args) => {
+            let time = std::time::Instant::now();
             let cint_data = CInt::from_json(&cli_args.mol_file);
             let aux_cint_data = CInt::from_json(&cli_args.aux_file);
             rhf::minimal_ri_rhf(&cint_data, &aux_cint_data);
+            println!("Elapsed time for RI-RHF: {:.2?}", time.elapsed());
+        },
+        Command::RiRhfFaster(cli_args) => {
+            let time = std::time::Instant::now();
+            let cint_data = CInt::from_json(&cli_args.mol_file);
+            let aux_cint_data = CInt::from_json(&cli_args.aux_file);
+            rhf::minimal_ri_rhf_faster(&cint_data, &aux_cint_data);
+            println!("Elapsed time for RI-RHF (faster): {:.2?}", time.elapsed());
         },
         Command::RiRccsd(cli_args) => {
             let cint_data = CInt::from_json(&cli_args.mol_file);
