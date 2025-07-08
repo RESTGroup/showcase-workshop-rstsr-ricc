@@ -1,5 +1,5 @@
-use crate::ccsdt::*;
 use crate::prelude::*;
+use crate::ri_rccsdt_slow::*;
 use std::sync::{Arc, Mutex};
 
 pub struct TransposedIndices {
@@ -24,13 +24,7 @@ fn prepare_transposed_indices(nocc: usize) -> TransposedIndices {
     TransposedIndices { tr_012, tr_021, tr_102, tr_120, tr_201, tr_210 }
 }
 
-fn get_w_faster(
-    abc: [usize; 3],
-    mut w: TsrMut,
-    wbuf: TsrMut,
-    intermediates: &RCCSDTIntermediates,
-    tr_indices: &[usize],
-) {
+fn get_w(abc: [usize; 3], mut w: TsrMut, wbuf: TsrMut, intermediates: &RCCSDTIntermediates, tr_indices: &[usize]) {
     // + np.einsum("id, djk -> ijk", eri_vvov_t[a, b], t2_t[c])
     // - np.einsum("ljk, li -> ijk", eri_vooo_t[c], t2_t[a, b])
 
@@ -57,7 +51,7 @@ fn get_w_faster(
     });
 }
 
-fn ccsd_t_energy_contribution_faster(
+fn ccsd_t_energy_contribution(
     abc: [usize; 3],
     mol_info: &RCCSDInfo,
     intermediates: &RCCSDTIntermediates,
@@ -76,12 +70,12 @@ fn ccsd_t_energy_contribution_faster(
     let mut wbuf = unsafe { rt::empty(([nocc, nocc, nocc], &device)) };
 
     w.fill(0.0);
-    get_w_faster([a, b, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_012);
-    get_w_faster([a, c, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_021);
-    get_w_faster([b, c, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_201);
-    get_w_faster([b, a, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_102);
-    get_w_faster([c, a, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_120);
-    get_w_faster([c, b, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_210);
+    get_w([a, b, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_012);
+    get_w([a, c, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_021);
+    get_w([b, c, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_201);
+    get_w([b, a, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_102);
+    get_w([c, a, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_120);
+    get_w([c, b, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_210);
 
     let eri_vvoo_t_ab = eri_vvoo_t.i([a, b]).into_dim::<Ix2>();
     let eri_vvoo_t_bc = eri_vvoo_t.i([b, c]).into_dim::<Ix2>();
@@ -126,7 +120,7 @@ fn ccsd_t_energy_contribution_faster(
     fac * e_sum
 }
 
-pub fn get_riccsd_pt_energy_faster(
+pub fn get_riccsd_pt_energy(
     mol_info: &RCCSDInfo,
     ccsd_intermediates: &RCCSDIntermediates,
     ccsd_results: &RCCSDResults,
@@ -149,8 +143,9 @@ pub fn get_riccsd_pt_energy_faster(
     let e_corr_pt = Arc::new(Mutex::new(0.0));
 
     let timer = std::time::Instant::now();
+    // this code can also turned into `fold`
     abc_list.into_par_iter().for_each(|abc| {
-        let e_pt_inc = ccsd_t_energy_contribution_faster(abc, mol_info, &intermediates, &tr_indices);
+        let e_pt_inc = ccsd_t_energy_contribution(abc, mol_info, &intermediates, &tr_indices);
         *e_corr_pt.lock().unwrap() += e_pt_inc;
     });
     println!("Time elapsed (CCSD(T) computation): {:?}", timer.elapsed());

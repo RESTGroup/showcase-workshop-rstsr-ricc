@@ -1,21 +1,6 @@
 use crate::prelude::*;
 use std::sync::{Arc, Mutex};
 
-#[derive(Default)]
-pub struct RCCSDTIntermediates {
-    pub t1_t: Option<Tsr>,
-    pub t2_t: Option<Tsr>,
-    pub eri_vvov_t: Option<Tsr>,
-    pub eri_vooo_t: Option<Tsr>,
-    pub eri_vvoo_t: Option<Tsr>,
-    pub d_ooo: Option<Tsr>,
-}
-
-#[derive(Debug)]
-pub struct RCCSDTResults {
-    pub e_corr_pt: f64,
-}
-
 pub(crate) fn prepare_intermediates(
     mol_info: &RCCSDInfo,
     ccsd_intermediates: &RCCSDIntermediates,

@@ -2,9 +2,7 @@
 
 /* #region for API callers */
 
-pub use crate::ccsd::{CCSDConfig, RCCSDInfo, RCCSDIntermediates, RCCSDResults};
-pub use crate::ccsdt::{RCCSDTIntermediates, RCCSDTResults};
-pub use crate::rhf::RHFResults;
+pub use crate::structs::*;
 
 // RSTSR backend specification
 #[cfg(not(feature = "use_openblas"))]
