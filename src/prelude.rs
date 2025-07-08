@@ -19,6 +19,7 @@ pub type TsrMut<'a, D = IxD> = TensorMut<'a, f64, DeviceTsr, D>;
 
 /* #region for developers */
 
+pub(crate) use itertools::*;
 pub(crate) use libcint::prelude::*;
 pub(crate) use rayon::prelude::*;
 pub(crate) use rstsr::prelude::*;

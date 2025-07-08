@@ -1,6 +1,7 @@
 use crate::prelude::*;
 use std::sync::{Arc, Mutex};
 
+#[derive(Default)]
 pub struct RCCSDTIntermediates {
     pub t1_t: Option<Tsr>,
     pub t2_t: Option<Tsr>,
@@ -10,25 +11,12 @@ pub struct RCCSDTIntermediates {
     pub d_ooo: Option<Tsr>,
 }
 
-impl RCCSDTIntermediates {
-    pub fn new_empty() -> Self {
-        RCCSDTIntermediates {
-            t1_t: None,
-            t2_t: None,
-            eri_vvov_t: None,
-            eri_vooo_t: None,
-            eri_vvoo_t: None,
-            d_ooo: None,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct RCCSDTResults {
     pub e_corr_pt: f64,
 }
 
-fn prepare_intermediates(
+pub(crate) fn prepare_intermediates(
     mol_info: &RCCSDInfo,
     ccsd_intermediates: &RCCSDIntermediates,
     ccsd_results: &RCCSDResults,
