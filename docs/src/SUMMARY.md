@@ -1,4 +1,4 @@
-# Summary
+[REST Workshop：Rust 计算化学程序开发](./index.md)
 
 - [前言](./intro.md)
 - [RHF：极简演示](./rhf_slow.md)

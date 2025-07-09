@@ -14,7 +14,7 @@ pub fn intor_row_major(cint_data: &CInt, intor: &str) -> Tsr {
     // intor, "s1", full_shls_slice
     let (out, shape) = cint_data.integrate_row_major(intor, None, None).into();
 
-    // row-major by transposition of col-major shape
+    // output row-major tensor
     rt::asarray((out, shape.c(), &device))
 }
 
