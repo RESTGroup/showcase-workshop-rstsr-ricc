@@ -19,22 +19,21 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
     let int2c2e = util::intor_row_major(aux_cint_data, "int2c2e");
 
     // prepare cholesky-decomposed int2c2e
-    let int3c2e_trans = int3c2e.into_shape([nao * nao, naux]).into_reverse_axes();
     let int2c2e_l = rt::linalg::cholesky((int2c2e.view(), Lower));
-    let cderi = rt::linalg::solve_triangular((int2c2e_l.view(), int3c2e_trans, Lower));
-    let cderi = cderi.into_reverse_axes().into_shape([nao, nao, naux]);
+    let cderi = rt::linalg::solve_triangular((int2c2e_l.view(), int3c2e.reshape([nao * nao, naux]).t(), Lower));
+    let cderi = cderi.into_shape([naux, nao, nao]).into_contig(RowMajor);
 
     let get_j = |dm: TsrView| -> Tsr {
-        let cderi_flat = cderi.reshape([nao * nao, naux]);
-        let scr = dm.reshape(nao * nao) % &cderi_flat;
-        (cderi_flat % scr).into_shape([nao, nao])
+        let cderi_flat = cderi.reshape([naux, nao * nao]);
+        let dm_flat = dm.reshape([nao * nao]);
+        (cderi_flat.t() % (&cderi_flat % dm_flat)).into_shape([nao, nao])
     };
 
     let get_k = |mo_coeff: TsrView| -> Tsr {
         let occ_coeff = mo_coeff.i((.., ..nocc));
-        let scr = (cderi.reshape([nao, nao * naux]).t() % occ_coeff).into_shape([nao, naux, nocc]);
-        let scr_flat = scr.reshape([nao, naux * nocc]);
-        2.0_f64 * (&scr_flat % scr_flat.t())
+        let scr = (occ_coeff.t() % cderi.reshape([naux * nao, nao]).t()).into_shape([nocc, naux, nao]);
+        let scr_flat = scr.reshape([naux * nocc, nao]);
+        2.0_f64 * (scr_flat.t() % &scr_flat)
     };
 
     let mut dm = ovlp.zeros_like();

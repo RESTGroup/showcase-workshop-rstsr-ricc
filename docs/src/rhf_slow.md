@@ -3,7 +3,7 @@
 - 程序：`rhf_slow.rs` ([gitee](https://gitee.com/restgroup/showcase-workshop-rstsr-ricc/blob/master/src/rhf_slow.rs), [github](https://github.com/RESTGroup/showcase-workshop-rstsr-ricc/blob/master/src/rhf_slow.rs))
 - 实现内容：RHF (restricted Hartree-Fock, conventional 4c-2e)
 - 不关注程序效率
-- 该程序总共约 50 行。
+- 该程序总共约 50 行
 
 <!-- toc -->
 
