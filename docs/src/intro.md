@@ -18,7 +18,7 @@
 
 计算化学程序开发者还同时面临一些额外的问题：计算化学方法，特别是涉及到后自洽场、响应性质、激发态等问题的公式经常比较复杂。如何快速验证程序的正确性、并进一步作性能改善，是程序开发者面临的困难。
 
-怎样的语言与框架，可以认为适合于计算化学所需要的快速验证与高效实现？我们认为，
+如何以客观的标准，评估程序语言或框架，是否能满足计算化学所需要的快速验证与高效实现？我们认为，
 - **快速验证**：因程序开发者经验与习惯差异而有不同看法；我们以代码行数作为客观标准，认为**较短的代码比较契合快速开发的需求**。理想情况下，**一行公式能对应一行代码**。
 - **高效实现**：在算法清晰、浮点数计算量 (FLOPs) 可以大致算出的前提下，我们可以**对比计算设备的理论浮点计算能力 (FLOP/sec) 与程序的实际浮点计算效率**，确认实现是否确实高效。
 
@@ -61,8 +61,11 @@ RSTSR 是 Rust 语言下，可用于处理张量存储与索引、以及对矩�
 
 ## 3. 约定俗成
 
+### 3.1 记号
+
 - 本项目统一使用行优先 (row-major)。
 - 本项目仅考虑闭壳层基态，不引入赝势 (ECP)。占据轨道数严格等于实际体系电子数的一半。
+- 本项目仅考虑实函数。
 
 指标规则为
 
@@ -70,5 +73,33 @@ RSTSR 是 Rust 语言下，可用于处理张量存储与索引、以及对矩�
 |--|--|--|--|--|
 | 占据轨道 | occupied | $i, j, k, l$ | `nocc` | `o` |
 | 非占轨道 | virtual | $a, b, c, d$ | `nvir` | `v` |
+| 所有分子轨道 | orbital | $p, q, r$ | `nmo` |
 | (原子轨道) 基组 | basis | $\mu, \nu, \kappa, \lambda$ | `nao` | `b` |
 | (原子轨道) 辅助基组 | auxiliary | $P, Q, R$ | `naux` | `x` |
+| 原子核 | atom | $A, B$ | `natm` |
+
+### 3.2 张量与后端类型
+
+本工作中，为了方便起见，后端类型声明为 `DeviceTsr`。若用户可以通过 cargo feature 指定 Faer 后端或 OpenBLAS 后端。
+
+```rust
+// prelude.rs
+#[cfg(not(feature = "use_openblas"))]
+pub type DeviceTsr = DeviceFaer;
+#[cfg(feature = "use_openblas")]
+pub type DeviceTsr = DeviceOpenBLAS;
+```
+
+我们总是在 64 位浮点数、固定后端下进行开发；为了简化代码，张量类型则分别定义为
+- 占有张量 `Tsr`
+- 不可变张量视窗 `TsrView`
+- 可变张量视窗 `TsrMut`
+
+我们会在非常少数的情景下，使用固定维度张量 (相对于动态维度而言)，因此保留维度泛型参数。
+
+```rust
+// prelude.rs
+pub type Tsr<D = IxD> = Tensor<f64, DeviceTsr, D>;
+pub type TsrView<'a, D = IxD> = TensorView<'a, f64, DeviceTsr, D>;
+pub type TsrMut<'a, D = IxD> = TensorMut<'a, f64, DeviceTsr, D>;
+```

@@ -11,9 +11,9 @@ pub fn get_energy_nuc(cint_data: &CInt) -> f64 {
         rt::asarray((coords, &device)).into_shape((-1, 3))
     };
     let atom_charges = rt::asarray((cint_data.atom_charges(), &device));
-    let mut dist = rt::sci::cdist((atom_coords.view(), atom_coords.view()));
+    let mut dist = rt::sci::distance::cdist((atom_coords.view(), atom_coords.view()));
     dist.diagonal_mut(None).fill(f64::INFINITY);
-    0.5 * (&atom_charges * atom_charges.i((.., None)) / dist).sum()
+    0.5 * ((atom_charges.i((.., None)) * &atom_charges) / dist).sum()
 }
 
 pub fn minimal_rhf(cint_data: &CInt) -> RHFResults {
@@ -30,12 +30,12 @@ pub fn minimal_rhf(cint_data: &CInt) -> RHFResults {
     let ovlp = util::intor_row_major(cint_data, "int1e_ovlp");
     let int2e = util::intor_row_major(cint_data, "int2e");
 
-    let mut dm = ovlp.zeros_like();
+    let mut dm = rt::zeros(([nao, nao], &device));
     let mut mo_coeff = rt::zeros(([nao, nao], &device));
     let mut mo_energy = rt::zeros(([nao], &device));
     for _ in 0..NITER {
         let fock = &hcore + ((1.0_f64 * &int2e - 0.5_f64 * int2e.swapaxes(1, 2)) * &dm).sum_axes([-1, -2]);
-        (mo_energy, mo_coeff) = rt::linalg::eigh((fock.view(), ovlp.view())).into();
+        (mo_energy, mo_coeff) = rt::linalg::eigh((&fock, &ovlp)).into();
         dm = 2.0_f64 * mo_coeff.i((.., ..nocc)) % mo_coeff.i((.., ..nocc)).t();
     }
     let eng_scratch = &hcore + ((0.5_f64 * &int2e - 0.25_f64 * int2e.swapaxes(1, 2)) * &dm).sum_axes([-1, -2]);
