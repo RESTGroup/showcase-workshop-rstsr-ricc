@@ -7,6 +7,8 @@
 
 在本节中，我们经常将密度矩阵 $D_{\mu \nu}$ 看作 $n_\mathrm{basis}^2$ 长度的 1-D 向量，而非 $n_\mathrm{basis} \times n_\mathrm{basis}$ 的 2-D 矩阵。类似地，4c-2e 双电子积分经常看作是 $n_\mathrm{basis}^2 \times n_\mathrm{basis}^2$ 的 2-D 矩阵，而非 $n_\mathrm{basis} \times n_\mathrm{basis} \times n_\mathrm{basis} \times n_\mathrm{basis}$ 的 4-D 张量。
 
+<!-- toc -->
+
 ## 1. RI-RHF 回顾
 
 相比于普通的 RHF，RI-RHF 方法不需要计算庞大的 4c-2e 双电子积分，而只需要计算较小的 3c-2e 双电子积分。同时，通过张量分解，其 Fock 矩阵的计算量明显比 RHF 方法小很多。

@@ -52,6 +52,22 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
         2.0_f64 * (scr_xob_flat.t() % &scr_xob_flat)
     };
 
+    // this is safe version of get_k
+    // the efficiency should be the same as the unsafe version
+    // (but maybe not everybody is happy to use zipped iterators)
+    #[allow(unused)]
+    let get_k_safe = |mo_coeff: TsrView| -> Tsr {
+        let occ_coeff = mo_coeff.i((.., ..nocc));
+        let mut scr_xob = unsafe { rt::empty(([naux, nocc, nao], &device)) };
+        let mut scr_xob_iter = scr_xob.axes_iter_mut(0);
+        (0..naux).into_par_iter().zip(scr_xob_iter).for_each(|(p, mut scr_ob)| {
+            let cderi_ob = cderi.i(p).unpack_tril(FlagSymm::Sy);
+            scr_ob.matmul_from(&occ_coeff.t(), &cderi_ob, 1.0, 0.0);
+        });
+        let scr_xob_flat = scr_xob.reshape([naux * nocc, nao]);
+        2.0_f64 * (scr_xob_flat.t() % &scr_xob_flat)
+    };
+
     let mut dm = rt::zeros(([nao, nao], &device));
     let mut mo_coeff = rt::zeros(([nao, nao], &device));
     let mut mo_energy = rt::zeros(([nao], &device));
