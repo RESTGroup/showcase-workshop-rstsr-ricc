@@ -36,7 +36,12 @@ pub fn get_riccsd_intermediates_cderi(mol_info: &RCCSDInfo, intermediates: &mut 
     intermediates.b_vv = Some(b_vv);
 }
 
-pub fn get_riccsd_intermediates_1(mol_info: &RCCSDInfo, intermediates: &mut RCCSDIntermediates, t1: &Tsr, t2: &Tsr) {
+pub fn get_riccsd_intermediates_1(
+    mol_info: &RCCSDInfo,
+    intermediates: &mut RCCSDIntermediates,
+    t1: TsrView,
+    t2: TsrView,
+) {
     let naux = mol_info.naux();
     let nocc = mol_info.nocc();
     let nvir = mol_info.nvir();
@@ -51,7 +56,7 @@ pub fn get_riccsd_intermediates_1(mol_info: &RCCSDInfo, intermediates: &mut RCCS
     let m1_oo: Tsr = rt::zeros(([nocc, nocc, naux], &device));
     (0..nocc).into_par_iter().for_each(|j| {
         let mut m1_oo = unsafe { m1_oo.force_mut() };
-        *&mut m1_oo.i_mut((.., j)) += t1 % &b_ov.i(j);
+        *&mut m1_oo.i_mut((.., j)) += &t1 % &b_ov.i(j);
     });
 
     // M2a = np.einsum("jbP, ijab -> iaP", B[so, sv], (2 * t2 - t2.swapaxes(-1, -2)))
@@ -67,7 +72,7 @@ pub fn get_riccsd_intermediates_1(mol_info: &RCCSDInfo, intermediates: &mut RCCS
     intermediates.m2a_ov = Some(m2a_ov);
 }
 
-pub fn get_riccsd_intermediates_2(mol_info: &RCCSDInfo, intermediates: &mut RCCSDIntermediates, t1: &Tsr) {
+pub fn get_riccsd_intermediates_2(mol_info: &RCCSDInfo, intermediates: &mut RCCSDIntermediates, t1: TsrView) {
     let naux = mol_info.naux();
     let nocc = mol_info.nocc();
     let nvir = mol_info.nvir();
@@ -86,7 +91,7 @@ pub fn get_riccsd_intermediates_2(mol_info: &RCCSDInfo, intermediates: &mut RCCS
     });
 
     // M1bov  = np.einsum("abP, ib -> iaP", B[sv, sv], t1)
-    let m1b_ov = t1 % b_vv.reshape((nvir, -1));
+    let m1b_ov = &t1 % b_vv.reshape((nvir, -1));
     let m1b_ov = m1b_ov.into_shape((nocc, nvir, naux));
 
     // M1vv = np.einsum("ibP, ia -> abP", B[so, sv], t1)
@@ -119,7 +124,13 @@ pub fn get_riccsd_energy(intermediates: &RCCSDIntermediates) -> f64 {
     e_corr.to_scalar()
 }
 
-pub fn get_riccsd_rhs1(mol_info: &RCCSDInfo, mut rhs1: TsrMut, intermediates: &RCCSDIntermediates, t1: &Tsr, t2: &Tsr) {
+pub fn get_riccsd_rhs1(
+    mol_info: &RCCSDInfo,
+    mut rhs1: TsrMut,
+    intermediates: &RCCSDIntermediates,
+    t1: TsrView,
+    t2: TsrView,
+) {
     let naux = mol_info.naux();
     let nocc = mol_info.nocc();
     let nvir = mol_info.nvir();
@@ -181,7 +192,7 @@ pub fn get_riccsd_rhs2_lt2_contract(
     mol_info: &RCCSDInfo,
     mut rhs2: TsrMut,
     intermediates: &RCCSDIntermediates,
-    t2: &Tsr,
+    t2: TsrView,
 ) {
     let naux = mol_info.naux();
     let nocc = mol_info.nocc();
@@ -250,7 +261,7 @@ pub fn get_riccsd_rhs2_direct_dot(mol_info: &RCCSDInfo, rhs2: TsrMut, intermedia
     });
 }
 
-pub fn get_riccsd_rhs2_o3v3(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &RCCSDIntermediates, t2: &Tsr) {
+pub fn get_riccsd_rhs2_o3v3(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &RCCSDIntermediates, t2: TsrView) {
     let nocc = mol_info.nocc();
     let nvir = mol_info.nvir();
 
@@ -312,10 +323,10 @@ pub fn get_riccsd_rhs2_o3v3(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &
 
 pub fn get_riccsd_rhs2_o4v2(
     mol_info: &RCCSDInfo,
-    rhs2: TsrMut,
+    mut rhs2: TsrMut,
     intermediates: &RCCSDIntermediates,
-    t1: &Tsr,
-    t2: &Tsr,
+    t1: TsrView,
+    t2: TsrView,
 ) {
     let nocc = mol_info.nocc();
     let nvir = mol_info.nvir();
@@ -360,28 +371,16 @@ pub fn get_riccsd_rhs2_o4v2(
     });
 
     scr_ijkl += (t2.reshape((nocc * nocc, -1)) % scr_klcd.reshape((nocc * nocc, -1)).t()).reshape(scr_ijkl.shape());
-    // let tau2 = t2 + t1.i((.., None, .., None)) * t1.i((None, .., None, ..));
-    // rhs2 += 0.5 * (scr_ijkl.reshape((nocc * nocc, -1)) % tau2.reshape((-1, nvir * nvir))).into_shape(t2.shape());
-    (0..nocc).into_par_iter().for_each(|i| {
-        (0..nvir).into_par_iter().for_each(|a| {
-            let mut rhs2 = unsafe { rhs2.force_mut() };
-            let tau2_klb = t2.i((.., .., a, ..)) + t1.i((.., None, a, None)) * t1.i((None, .., ..));
-            rhs2.i_mut((i, .., a, ..)).matmul_from(
-                &scr_ijkl.i(i).reshape((nocc, -1)),
-                &tau2_klb.reshape((-1, nvir)),
-                0.5,
-                1.0,
-            );
-        });
-    });
+    let tau2 = &t2 + t1.i((.., None, .., None)) * t1.i((None, .., None, ..));
+    rhs2 += 0.5 * (scr_ijkl.reshape((nocc * nocc, -1)) % tau2.reshape((-1, nvir * nvir))).into_shape(t2.shape());
 }
 
 pub fn get_riccsd_rhs2_o2v4(
     mol_info: &RCCSDInfo,
     mut rhs2: TsrMut,
     intermediates: &RCCSDIntermediates,
-    t1: &Tsr,
-    t2: &Tsr,
+    t1: TsrView,
+    t2: TsrView,
 ) {
     let nocc = mol_info.nocc();
     let nvir = mol_info.nvir();
@@ -520,7 +519,7 @@ pub fn get_amplitude_from_rhs(mol_info: &RCCSDInfo, rhs1: Tsr, rhs2: Tsr) -> (Ts
     (t1_new, t2_new)
 }
 
-pub fn diis_concate_amplitude(t1: &Tsr, t2: &Tsr) -> Tsr {
+pub fn diis_concate_amplitude(t1: TsrView, t2: TsrView) -> Tsr {
     let nocc = t1.shape()[0];
     let nvir = t1.shape()[1];
     let mut cat = rt::zeros(([nocc * nvir + nocc * nvir * nocc * nvir], t1.device()));
@@ -529,7 +528,7 @@ pub fn diis_concate_amplitude(t1: &Tsr, t2: &Tsr) -> Tsr {
     cat
 }
 
-pub fn diis_split_amplitude(cat: &Tsr, nocc: usize, nvir: usize) -> (Tsr, Tsr) {
+pub fn diis_split_amplitude(cat: TsrView, nocc: usize, nvir: usize) -> (Tsr, Tsr) {
     let t1 = cat.i(..nocc * nvir).into_shape((nocc, nvir));
     let t2 = cat.i(nocc * nvir..).into_shape((nocc, nocc, nvir, nvir));
     (t1, t2)
@@ -545,19 +544,19 @@ pub fn update_riccsd_amplitude(
 
     let t1 = &cc_info.t1;
     let t2 = &cc_info.t2;
-    let mut rhs1 = rt::zeros_like(t1);
-    let mut rhs2 = rt::zeros_like(t2);
+    let mut rhs1 = t1.zeros_like();
+    let mut rhs2 = t2.zeros_like();
 
     let timer = std::time::Instant::now();
-    get_riccsd_intermediates_2(mol_info, intermediates, t1);
+    get_riccsd_intermediates_2(mol_info, intermediates, t1.view());
     println!("Time elapsed (intermediates_2): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    get_riccsd_rhs1(mol_info, rhs1.view_mut(), intermediates, t1, t2);
+    get_riccsd_rhs1(mol_info, rhs1.view_mut(), intermediates, t1.view(), t2.view());
     println!("Time elapsed (rhs1): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    get_riccsd_rhs2_lt2_contract(mol_info, rhs2.view_mut(), intermediates, t2);
+    get_riccsd_rhs2_lt2_contract(mol_info, rhs2.view_mut(), intermediates, t2.view());
     println!("Time elapsed (rhs2 lt2_contract): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
@@ -565,15 +564,15 @@ pub fn update_riccsd_amplitude(
     println!("Time elapsed (rhs2 direct_dot): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    get_riccsd_rhs2_o3v3(mol_info, rhs2.view_mut(), intermediates, t2);
+    get_riccsd_rhs2_o3v3(mol_info, rhs2.view_mut(), intermediates, t2.view());
     println!("Time elapsed (rhs2 o3v3): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    get_riccsd_rhs2_o4v2(mol_info, rhs2.view_mut(), intermediates, t1, t2);
+    get_riccsd_rhs2_o4v2(mol_info, rhs2.view_mut(), intermediates, t1.view(), t2.view());
     println!("Time elapsed (rhs2 o4v2): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    get_riccsd_rhs2_o2v4(mol_info, rhs2.view_mut(), intermediates, t1, t2);
+    get_riccsd_rhs2_o2v4(mol_info, rhs2.view_mut(), intermediates, t1.view(), t2.view());
     println!("Time elapsed (rhs2 o2v4): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
@@ -581,13 +580,13 @@ pub fn update_riccsd_amplitude(
     println!("Time elapsed (update_t): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    let t_vec = diis_concate_amplitude(&t1_new, &t2_new);
+    let t_vec = diis_concate_amplitude(t1_new.view(), t2_new.view());
     let t_vec = diis_obj.update(t_vec, None, None);
-    let (t1_new, t2_new) = diis_split_amplitude(&t_vec, mol_info.nocc(), mol_info.nvir());
+    let (t1_new, t2_new) = diis_split_amplitude(t_vec.view(), mol_info.nocc(), mol_info.nvir());
     println!("Time elapsed (diis update): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    get_riccsd_intermediates_1(mol_info, intermediates, &t1_new, &t2_new);
+    get_riccsd_intermediates_1(mol_info, intermediates, t1_new.view(), t2_new.view());
     println!("Time elapsed (intermediates_1): {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
@@ -622,7 +621,7 @@ pub fn riccsd_iteration(mol_info: &RCCSDInfo, cc_config: &CCSDConfig) -> (RCCSDR
 
     // intermediates_1 should be initialized first before iteration
     let timer = std::time::Instant::now();
-    get_riccsd_intermediates_1(mol_info, &mut intermediates, &ccsd_results.t1, &ccsd_results.t2);
+    get_riccsd_intermediates_1(mol_info, &mut intermediates, ccsd_results.t1.view(), ccsd_results.t2.view());
     println!("Time elapsed (initialization of intermediates_1): {:?}", timer.elapsed());
 
     for niter in 0..cc_config.max_cycle {

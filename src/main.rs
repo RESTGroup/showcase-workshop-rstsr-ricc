@@ -90,7 +90,7 @@ fn main() {
                     (mo_coeff, mo_energy)
                 },
                 false => {
-                    let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &ri_cint_data);
+                    let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &aux_cint_data);
                     (rhf_results.mo_coeff, rhf_results.mo_energy)
                 },
             };
@@ -113,7 +113,7 @@ fn main() {
                     (mo_coeff, mo_energy)
                 },
                 false => {
-                    let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &ri_cint_data);
+                    let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &aux_cint_data);
                     (rhf_results.mo_coeff, rhf_results.mo_energy)
                 },
             };

@@ -232,7 +232,7 @@ impl DIISIncore {
         let num_space = self.intermediates.err_map.len();
         let err_list =
             (1..=num_space).into_iter().map(|i| self.intermediates.err_map.get(&i).unwrap()).collect::<Vec<_>>();
-        const CHUNK_SIZE: usize = 16384;
+        const CHUNK_SIZE: usize = 4194304;
         let ovlp_cur = Self::incore_inner_dot(err_cur, &err_list, CHUNK_SIZE);
         ovlp.i_mut((head, 1..num_space + 1)).assign(&ovlp_cur);
         ovlp.i_mut((1..num_space + 1, head)).assign(&ovlp_cur.conj());
@@ -277,11 +277,21 @@ impl DIISIncore {
         let c = (v.view() * w) % v.t().conj() % g;
 
         // 3. extrapolate the vector
-        let mut vec = self.intermediates.vec_map.get(&1).unwrap().zeros_like();
-        for idx in 1..=num_space {
-            let vec_idx = self.intermediates.vec_map.get(&idx).unwrap();
-            vec += vec_idx * c[[idx]];
-        }
+        let vec = self.intermediates.vec_map.get(&1).unwrap().zeros_like();
+        // the following code requires multiple writes to vec, which is inefficient
+        // for idx in 1..=num_space {
+        //     let vec_idx = self.intermediates.vec_map.get(&idx).unwrap();
+        //     vec += vec_idx * c[[idx]];
+        // }
+        let size = vec.size();
+        let coef_vecs =
+            (1..=num_space).map(|idx| (c[[idx]], self.intermediates.vec_map.get(&idx).unwrap())).collect_vec();
+        (0..size).into_par_iter().for_each(|x| unsafe {
+            let x_ptr = vec.raw().as_ptr().add(x) as *mut f64;
+            for (coef, c) in coef_vecs.iter() {
+                *x_ptr += coef * c.raw().get_unchecked(x);
+            }
+        });
 
         vec
     }
@@ -290,7 +300,12 @@ impl DIISIncore {
     pub fn update(&mut self, vec: Tsr, err: Option<Tsr>, iteration: Option<usize>) -> Tsr {
         self.insert(vec, None, err, iteration);
         let vec = self.extrapolate();
-        self.intermediates.vec_prev = Some(vec.to_owned());
+        // self.intermediates.vec_prev = Some(vec.to_owned());
+        if self.intermediates.vec_prev.is_some() {
+            self.intermediates.vec_prev.as_mut().unwrap().assign(&vec);
+        } else {
+            self.intermediates.vec_prev = Some(vec.clone());
+        }
         vec
     }
 
