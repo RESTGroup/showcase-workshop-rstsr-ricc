@@ -31,6 +31,8 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
     let int2c2e_l = rt::linalg::cholesky((int2c2e.view(), Lower));
     let cderi = rt::linalg::solve_triangular((int2c2e_l.view(), int3c2e, Lower));
 
+    println!("Prepare integrals: {:.3?}", time.elapsed());
+
     let get_j = |dm: TsrView| -> Tsr {
         let mut dm_scaled = 2.0_f64 * dm.to_owned();
         let dm_diag = dm.diagonal(None);
@@ -80,6 +82,8 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
     for _ in 0..MAX_ITER {
         niter += 1;
 
+        let time = std::time::Instant::now();
+
         // j/k evaluation
         let j = get_j(dm.view());
         let k = get_k(mo_coeff.view());
@@ -101,7 +105,10 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
         // convergence check
         let e_tot_diff = (e_tot - e_tot_old).abs();
         let dm_diff = (&dm - &old_dm).l2_norm() / (dm.size() as f64).sqrt();
-        println!("Iteration {niter:>2}: E_tot = {e_tot:20.12}, E_diff = {e_tot_diff:8.2e}, DM_diff = {dm_diff:8.2e}");
+        let elapsed = time.elapsed();
+        println!(
+            "Iteration {niter:>2}: E_tot = {e_tot:20.12}, E_diff = {e_tot_diff:8.2e}, DM_diff = {dm_diff:8.2e}, Elapsed = {elapsed:.3?}"
+        );
         if e_tot_diff < TOL_E && dm_diff < TOL_D {
             converged = true;
             break;
@@ -121,7 +128,7 @@ pub fn minimal_ri_rhf(cint_data: &CInt, aux_cint_data: &CInt) -> RHFResults {
     let e_tot = e_nuc + e_elec;
     println!("Total elec energy: {e_elec}");
     println!("Total RHF energy: {e_tot}");
-    println!("Elapsed time for RI-RHF: {:.2?} in {niter} iterations", time.elapsed());
+    println!("Elapsed time for RI-RHF: {:.3?} in {niter} iterations", time.elapsed());
 
     RHFResults { mo_energy, mo_coeff, dm, e_nuc, e_elec, e_tot }
 }

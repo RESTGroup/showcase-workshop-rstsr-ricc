@@ -301,7 +301,7 @@ dm = 2.0_f64 * mo_coeff.i((.., ..nocc)) % mo_coeff.i((.., ..nocc)).t();
 密度矩阵计算中，
 - `.i((.., ..nocc))` 是基础索引语句，它是指对第一个维度作全索引、第二个维度取前 $n_\mathrm{occ}$ 个指标，构成新的矩阵。具体来说，本征值求解得到的矩阵是 $n_\mathrm{basis} \times n_\mathrm{basis}$ 大小的 $C_{\mu p}$；但实际的密度矩阵需要前 $n_\mathrm{occ}$ 个本征值最低的本征向量构成的 $n_\mathrm{basis} \times n_\mathrm{occ}$ 大小的 $C_{\mu i}$。
 - `.t()` 与函数 `.to_reverse_axes()` 等价；它是生成一个转置的张量视窗。
-- `%` 是 RSTSR 特有的语法糖；它的意义是矩阵乘法 (或矩阵-向量乘法、向量-矩阵乘法)。
+- `%` 是 RSTSR 特有的语法糖；它的意义是矩阵乘法 (或矩阵-向量乘法、向量-矩阵乘法)。RSTSR 中，不论输入的矩阵是 row-major 或 col-major，都可以正常地调用 BLAS 的 GEMM 函数，不会因为输入矩阵是否转置了而产生效率损失。输出矩阵的连续性由编译时设置的 cargo feature (或后端的默认设定) 决定。
 
 ### 2.4 RHF 能量计算
 

@@ -74,7 +74,7 @@ pub struct DIISIncore {
 #[allow(clippy::useless_conversion)]
 impl DIISIncore {
     /// Initialize DIIS object.
-    pub fn new(flags: DIISIncoreFlags, device: &DeviceOpenBLAS) -> Self {
+    pub fn new(flags: DIISIncoreFlags, device: &DeviceTsr) -> Self {
         // initialize intermediates
         let mut ovlp = rt::zeros(([flags.space + 1, flags.space + 1], device));
         ovlp.i_mut((0, 1..)).fill(1.0);

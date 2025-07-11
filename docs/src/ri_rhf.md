@@ -2,7 +2,10 @@
 
 - 程序：`ri_rhf.rs` ([gitee](https://gitee.com/restgroup/showcase-workshop-rstsr-ricc/blob/master/src/ri_rhf.rs), [github](https://github.com/RESTGroup/showcase-workshop-rstsr-ricc/blob/master/src/ri_rhf.rs))
 - 实现内容：RI-RHF (restricted resolution-of-identity Hartree-Fock)
-- 性能上令人满意
+- 性能尚可
+    - (H2O)<sub>10</sub> cc-pVDZ ($n_\mathrm{basis} = 240$)，Ryzen HX7945
+    - OpenBLAS 1.4 sec / 16 iter (RSTSR v0.3 的矩阵-向量乘法用 GEMM 而非 GEMV 实现，J 积分较慢)
+    - Faer 1.3 sec / 16 iter
 - 该程序总共约 110 行
 - 该程序包含 DIIS 迭代
 
@@ -159,6 +162,11 @@ let scr_xob_flat = scr_xob.reshape([naux * nocc, nao]);
     其中，`axes_iter_mut(0)` 函数是指对第 0 个维度 (指标 $P$ 所在的维度) 返回 mutable 子张量的迭代器。这个迭代器可以用于并行的环境。
 - `i_mut(p)` 与 `i` 函数一样是基础索引，但它将返回张量的可变视窗。
 - `matmul_from` 与 `%` 或者 `rt::matmul` 一样，都是张量的矩阵乘法。但不同的是，`%` 与 `rt::matmul` 会为矩阵乘法的结果新开辟一片堆空间内存；但 `matmul_from` 则是在已有内存上进行矩阵乘法，且允许指定 $\mathbf{C} = \alpha \mathbf{A} \mathbf{B} + \beta \mathbf{C}$ 的系数 $\alpha$ 与 $\beta$。使用 `matmul_from` 或许从阅读上看来并不直观；但从效率与内存占用上，`matmul_from` 确实是更好的选择。
+
+- 我们在 Rayon 并行区域内调用了矩阵乘法。在 RSTSR 中，对于 BLAS 后端，
+    - 如果在 Rayon 并行区域外调用 BLAS，则会使用并行版本的 BLAS，并控实际使用的制线程数量。
+    - 如果在 Rayon 并行区域内调用 BLAS，则会通过 `openblas_set_num_threads` 或 `omp_set_num_threads` 控制线程数为 1，从而线程内使用串行的 BLAS、但线程外由 Rayon 控制任务调度，达到并行的效果。
+    - 对于 pthreads 并行的 OpenBLAS，如果您希望在其他地方直接使用 OpenBLAS 函数前，最好重新通过 `openblas_set_num_threads` 重新设置一下线程数量。Rayon 并行区域内调用 BLAS 可能会破坏 OpenBLAS 的全局并行参数。对于 OpenMP 并行的 OpenBLAS 应没有上述问题。
 
 - 注意到最后实现矩阵乘法 $\mathbf{K} = 2 \mathbf{\bar{B}}^\dagger \mathbf{\bar{B}}$ 的代码
     ```rust

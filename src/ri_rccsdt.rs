@@ -67,7 +67,6 @@ fn ccsd_t_energy_contribution(
     let mut w = rt::zeros(([nocc, nocc, nocc], &device));
     let mut wbuf = unsafe { rt::empty(([nocc, nocc, nocc], &device)) };
 
-    w.fill(0.0);
     get_w([a, b, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_012);
     get_w([a, c, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_021);
     get_w([b, c, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_201);

@@ -53,6 +53,8 @@ Rust 语言与其他语言的对比：
 
 ## 2. 数学库 RSTSR
 
+### 2.1 RSTSR 简介
+
 该项目使用到数学库 [RSTSR](https://github.com/RESTGroup/rstsr)。
 
 RSTSR 是 Rust 语言下，可用于处理张量存储与索引、以及对矩阵作线性代数运算的库。
@@ -60,6 +62,16 @@ RSTSR 是 Rust 语言下，可用于处理张量存储与索引、以及对矩�
 - 支持多后端。目前 RSTSR 支持 OpenBLAS 与 [Faer](https://github.com/sarah-quinones/faer-rs/) (纯 Rust 的数值代数库) 后端。未来会引入 MKL 与 CUDA 等其他后端。
 - 涉及到矩阵线性代数的部分，性能由后端决定；其余的部分尽可能充分利用张量连续性与并行，性能较高。
 - 同时支持行优先与列优先。
+
+### 2.2 所有权问题
+
+RSTSR 在使用上与 NumPy 有很多相似之处，但有一个非常大的区别在于数据所有权。
+
+Rust 有非常严格的所有权规则；除非您的数据类型是 RC (reference counting) 智能指针，否则必须要区分数据是占有的还是引用的、对于引用类型还需要指定其生命周期。
+
+RSTSR 的所有权规则参考自 Rust 库 `ndarray`；其简要说明可以参考 [用户文档](https://restgroup.github.io/rstsr-book/zh-hans/docs/fundamentals/structure_and_ownership)。调用的函数的过程中，
+- 如果是不改变张量数据的操作 (比如索引、转置等)，函数签名中没有 `into_` 前缀的将返回引用类型张量视窗 (如函数 `i`, `transpose`, `swapaxes`)；若有 `into_` 前缀的则返回 `self` 自身的类型 (如函数 `into_reverse_axes`)。
+- 张量维度更改 (reshape) 是可能产生新数据的操作。`reshape` 将返回占有或视窗的张量 (copy-on-write 类型)；`into_shape` 将返回占有数据的张量。调用 `reshape` 或 `into_shape` 时，如果原先的张量数据足够连续，可以避免数据的复制，从而以近乎为零的开销实现维度更改。
 
 ## 3. 约定俗成
 
