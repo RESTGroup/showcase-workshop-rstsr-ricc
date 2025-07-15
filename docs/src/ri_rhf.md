@@ -3,11 +3,14 @@
 - 程序：`ri_rhf.rs` ([gitee](https://gitee.com/restgroup/showcase-workshop-rstsr-ricc/blob/master/src/ri_rhf.rs), [github](https://github.com/RESTGroup/showcase-workshop-rstsr-ricc/blob/master/src/ri_rhf.rs))
 - 实现内容：RI-RHF (restricted resolution-of-identity Hartree-Fock)
 - 性能尚可
-    - (H2O)<sub>10</sub> cc-pVDZ ($n_\mathrm{basis} = 240$)，Ryzen HX7945
+    - 体系 (H2O)<sub>10</sub> cc-pVDZ ($n_\mathrm{basis} = 240$, $n_\mathrm{aux} = 1160$)
+    - 计算设备 Ryzen HX7945，16 cores，算力约 1.1 TFLOP/sec
     - OpenBLAS 1.4 sec / 16 iter (RSTSR v0.3 的矩阵-向量乘法用 GEMM 而非 GEMV 实现，J 积分较慢)
     - Faer 1.3 sec / 16 iter
 - 该程序总共约 110 行
 - 该程序包含 DIIS 迭代
+
+## 目录
 
 <!-- toc -->
 

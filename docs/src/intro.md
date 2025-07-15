@@ -6,6 +6,8 @@
 
 作为例子，我们**快速高效**地实现了 RHF 到 RCCSD(T) 一系列方法，展示 Rust 语言下计算化学程序 (或类似的科学计算任务) 开发的可能性。
 
+## 目录
+
 <!-- toc -->
 
 ## 1. Rust 语言与计算化学
@@ -22,7 +24,7 @@
 - **快速验证**：因程序开发者经验与习惯差异而有不同看法；我们以代码行数作为客观标准，认为**较短的代码比较契合快速开发的需求**。理想情况下，**一行公式能对应一行代码**。
 - **高效实现**：在算法清晰、浮点数计算量 (FLOPs) 可以大致算出的前提下，我们可以**对比计算设备的理论浮点计算能力 (FLOP/sec) 与程序的实际浮点计算效率**，确认实现是否确实高效。
 
-这些标准本身，不随计算机语言、硬件水平而不同；任何时代下的程序与框架应都可以此标准衡量。
+随着硬件与计算机语言的发展，早年时代表现好的程序，或许会在未来失去竞争力。但是，上面两个标准本身，不随计算机语言、硬件水平而不同；任何时代下的程序与框架应都可以此标准衡量。
 
 ### 1.2 Rust 语言：作为计算化学程序开发者的特色与不足
 
@@ -83,14 +85,14 @@ RSTSR 的所有权规则参考自 Rust 库 `ndarray`；其简要说明可以参�
 
 指标规则为
 
-| 意义 | 英文名称 | 公式指标 | 程序数量变量 | 程序变量代号 |
-|--|--|--|--|--|
-| 占据轨道 | occupied | $i, j, k, l$ | `nocc` | `o` |
-| 非占轨道 | virtual | $a, b, c, d$ | `nvir` | `v` |
-| 所有分子轨道 | orbital | $p, q, r$ | `nmo` |
-| (原子轨道) 基组 | basis | $\mu, \nu, \kappa, \lambda$ | `nao` | `b` |
-| (原子轨道) 辅助基组 | auxiliary | $P, Q, R$ | `naux` | `x` |
-| 原子核 | atom | $A, B$ | `natm` |
+| 意义 | 英文名称 | 公式指标 | 数量 | 数量程序变量 | 程序变量代号 |
+|--|--|--|--|--|--|
+| 占据轨道 | occupied | $n_\mathrm{occ}$ | $i, j, k, l$ | `nocc` | `o` |
+| 非占轨道 | virtual | $n_\mathrm{vir}$ | $a, b, c, d$ | `nvir` | `v` |
+| 所有分子轨道 | orbital | $n_\mathrm{orb}$ | $p, q, r$ | `nmo` |
+| (原子轨道) 基组 | basis | $n_\mathrm{basis}$ | $\mu, \nu, \kappa, \lambda$ | `nao` | `b` |
+| (原子轨道) 辅助基组 | auxiliary | $n_\mathrm{aux}$ | $P, Q, R$ | `naux` | `x` |
+| 原子核 | atom | $A, B$ | $n_\mathrm{atom}$ | `natm` |
 
 ### 3.2 张量与后端类型
 
@@ -117,3 +119,64 @@ pub type Tsr<D = IxD> = Tensor<f64, DeviceTsr, D>;
 pub type TsrView<'a, D = IxD> = TensorView<'a, f64, DeviceTsr, D>;
 pub type TsrMut<'a, D = IxD> = TensorMut<'a, f64, DeviceTsr, D>;
 ```
+
+## 4. 必要的性能分析背景
+
+### 4.1 简单矩阵代数的 FLOPs 分析
+
+在本项目中，我们会对 FLOPs 作简单分析。
+
+- 对于矩阵乘法 ($\mathbf{A} \in \mathbb{F}^{m \times k}$，$\mathbf{B} \in \mathbb{F}^{k \times n}$，$\mathbf{C} \in \mathbb{F}^{m \times n}$，其中 $\mathbb{F}$ 代表数据的类型)
+
+    $$
+    C_{ij} = \sum_a A_{ia} B_{aj} \quad \text{or} \quad \mathbf{C} = \mathbf{A} \mathbf{B}
+    $$
+
+    则该计算的 FLOPs 总量是 $2 m n k$；其中的 $2$ 系数来源与一次加法与一次乘法。
+
+- 对于矩阵乘法 
+
+    $$
+    C_{ij} = \sum_a A_{ia} B_{ja} \quad \text{or} \quad \mathbf{C} = \mathbf{A} \mathbf{A}^\dagger
+    $$
+
+    则该计算的 FLOPs 近似为 $n^2 k$ (由于 $C_{ij} = C_{ji}$，因此只需要作一半矩阵乘法，剩下一半通过转置得到)。
+
+- 对于上三角或下三角矩阵 $\mathbf{A} \in \mathbb{F}^{n \times n}$ 以及长方形矩阵 $\mathbf{B} \in \mathbb{F}^{n \times m}$，作下述三角矩阵乘法或求解
+
+    $$
+    \begin{aligned}
+    \mathbf{C} &= \mathbf{A} \mathbf{B} \quad \text{(triangular matrix multiply)} \\
+    \mathbf{C} &= \mathbf{A}^{-1} \mathbf{B} \quad \text{(triangular matrix solve)} \\
+    \end{aligned}
+    $$
+
+    则该计算的 FLOPs 近似为 $n^2 m$。
+
+在以矩阵乘法为性能瓶颈的问题中，其他 FLOPs 通常是可以作为小量忽略的。但也要留意，除了矩阵乘法外，
+- 在理想的程序实现、以及特定的算法下，内存带宽也会占用计算资源；
+- 不理想的程序实现，会导致各种性能损耗，包括但不限于多余的内存资源分配与复制、低效率的指针索引、并行问题等等。
+
+### 4.2 计算设备的理想性能
+
+本文档着重于 CPU。CPU 厂商通常不会直接将 64 位浮点数矩阵乘法峰值能力标在产品说明上，我们通常需要自己作一些简单的换算。GPU 也可以作类似的分析，不过其峰值性能通常标注于产品说明，性能的比较会更加直观。
+
+对于矩阵乘法问题，CPU 计算设备的理想性能是
+
+$$
+\text{Ideal GFLOP/sec} = n_\textsf{core} n_\textsf{FMA} n_\textsf{SIMD} n_\textsf{unit} f_\textsf{CPU}
+$$
+
+- $n_\textsf{core}$ 物理内核数 (关闭超线程下的最大有效线程数)；
+- $n_\textsf{FMA}$ 乘加融合系数，固定为 2；
+- $n_\textsf{SIMD}$ 单个指令允许最大的数据大小 (对于 64 位浮点，x86 AVX-512 为 8、AVX2 为 4，ARM Neon 为 2)；
+- $n_\textsf{unit}$ 为 FMA 指令通道数 (AMD Zen AVX-512 为 1、AVX2 为 2，Intel Xeon 与 ARM Neon 通常为 2)；
+- $f_\textsf{CPU}$ 为满负荷运行时，以 GHz 为单位的 CPU 频率。
+
+本项目主要在个人电脑 AMD 7945HX 上测试。该设备的理想性能是 1.1 TFLOP/sec 或 1100 GFLOP/sec。
+
+## 5. 前言结语
+
+这份文档希望讨论程序的具体细节，以追求比较理想的程序性能。Rust 语言不仅能帮助我们较容易地达到理想性能，而且其具有较高的开发效率的潜力，适合计算化学的程序开发。
+
+但也要留意，程序性能的提升经常只是改进；真正的突破需要依靠计算化学的算法、方法、或认知论的发展。

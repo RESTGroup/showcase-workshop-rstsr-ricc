@@ -15,21 +15,28 @@ pub fn get_riccsd_intermediates_cderi(mol_info: &RCCSDInfo, intermediates: &mut 
     let aux_cint_data = &mol_info.aux_cint_data;
 
     // prepare cholesky-decomposed int2c2e in atomic-orbital
+    let time = std::time::Instant::now();
     let int3c2e = util::intor_3c2e_row_major(cint_data, aux_cint_data, "int3c2e");
     let int2c2e = util::intor_row_major(aux_cint_data, "int2c2e");
+    println!("Time elapsed (integrals): {:.3?}", time.elapsed());
+
+    let time = std::time::Instant::now();
     let int3c2e_trans = int3c2e.into_shape([nao * nao, naux]).into_reverse_axes();
     let int2c2e_l = rt::linalg::cholesky((int2c2e.view(), Lower));
     let cderi = rt::linalg::solve_triangular((int2c2e_l.view(), int3c2e_trans, Lower));
     let cderi_uvp = cderi.into_reverse_axes().into_shape([nao, nao, naux]);
+    println!("Time elapsed (cderi cholesky and solve_triangular): {:.3?}", time.elapsed());
 
     let so = slice!(0, nocc);
     let sv = slice!(nocc, nocc + nvir);
 
+    let time = std::time::Instant::now();
     let cderi_svp = (mo_coeff.t() % cderi_uvp.reshape((nao, nao * naux))).into_shape((nmo, nao, naux));
 
     let b_oo = mo_coeff.i((.., so)).t() % cderi_svp.i(so);
     let b_ov = mo_coeff.i((.., sv)).t() % cderi_svp.i(so);
     let b_vv = mo_coeff.i((.., sv)).t() % cderi_svp.i(sv);
+    println!("Time elapsed (ao2mo): {:.3?}", time.elapsed());
 
     intermediates.b_oo = Some(b_oo);
     intermediates.b_ov = Some(b_ov);
@@ -63,7 +70,7 @@ pub fn get_riccsd_intermediates_1(
     let m2a_ov: Tsr = rt::zeros(([nocc, nvir, naux], &device));
     (0..nocc).into_par_iter().for_each(|i| {
         let mut m2a_ov = unsafe { m2a_ov.force_mut() };
-        let scr_jba: Tsr = -t2.i(i) + 2 * t2.i(i).swapaxes(-1, -2);
+        let scr_jba: Tsr = 2 * t2.i((.., i)) - t2.i(i);
         *&mut m2a_ov.i_mut(i) += scr_jba.reshape((-1, nvir)).t() % b_ov.reshape((-1, naux));
     });
 
@@ -117,10 +124,10 @@ pub fn get_riccsd_energy(intermediates: &RCCSDIntermediates) -> f64 {
     let m1_oo = intermediates.m1_oo.as_ref().unwrap();
     let m2a_ov = intermediates.m2a_ov.as_ref().unwrap();
 
-    let e_t1_j = 2.0 * (m1_j.reshape(-1) % m1_j.reshape(-1));
+    let e_t1_j = 2.0_f64 * (m1_j % m1_j);
     let e_t1_k = -(m1_oo.reshape(-1) % m1_oo.swapaxes(0, 1).reshape(-1));
     let e_t2 = b_ov.reshape(-1) % m2a_ov.reshape(-1);
-    let e_corr: Tsr = e_t1_j + e_t1_k + e_t2;
+    let e_corr = e_t1_j + e_t1_k + e_t2;
     e_corr.to_scalar()
 }
 
@@ -159,12 +166,12 @@ pub fn get_riccsd_rhs1(
     // "kc, ikac -> ia", scr_kc, (2 * t2 - t2.swapaxes(-1, -2)))
     (0..nocc).into_par_iter().for_each(|i| {
         let mut rhs1 = unsafe { rhs1.force_mut() };
-        let mut t2_i: Tsr = 2.0 * t2.i(i) - t2.i(i).swapaxes(-1, -2);
+        let mut t2_i: Tsr = 2.0 * t2.i(i) - t2.i((.., i));
         t2_i *= scr_kc.i((.., None, ..));
         *&mut rhs1.i_mut(i) -= t2_i.sum_axes([0, 2]);
     });
 
-    // // === TERM 2 === //
+    // === TERM 2 === //
     // RHS1 += - 1 * np.einsum("kcP, icP, ka -> ia", B[so, sv], (M2a - M1aov), t1)
 
     rhs1 -= (m2a_ov - m1a_ov).reshape((nocc, -1)) % b_ov.reshape((nocc, -1)).t() % t1;
@@ -207,6 +214,8 @@ pub fn get_riccsd_rhs2_lt2_contract(
     let m1b_ov = intermediates.m1b_ov.as_ref().unwrap();
     let m2a_ov = intermediates.m2a_ov.as_ref().unwrap();
 
+    let device = rhs2.device().clone();
+
     // === TERM 1 === //
     // Loo = (
     //     + np.einsum("kcP, icP -> ik", B[so, sv], M2a)
@@ -221,7 +230,12 @@ pub fn get_riccsd_rhs2_lt2_contract(
         l_oo -= b_oo.i(l) % m1_oo.i(l).t();
     }
 
-    rhs2 -= (l_oo % t2.reshape((nocc, -1))).into_shape((nocc, nocc, nvir, nvir));
+    // the following line is intutive, but memory footprint is too large
+    // rhs2 -= (l_oo % t2.reshape((nocc, -1))).into_shape((nocc, nocc, nvir, nvir));
+
+    // change mutable tensor shape, then use memory-friendly `matmul_from`
+    let mut rhs2 = rt::asarray((rhs2.raw_mut(), [nocc, nocc * nvir * nvir].c(), &device));
+    rhs2.matmul_from(&l_oo, &t2.reshape((nocc, -1)), -1.0, 1.0);
 
     // Lvv = (
     //     - 1 * np.einsum("kcP, kaP -> ac", B[so, sv], M2a + M1bov)
@@ -231,10 +245,15 @@ pub fn get_riccsd_rhs2_lt2_contract(
     let scr: Tsr = 2 * b_vv - m1_vv;
     let mut l_vv = (scr.reshape((-1, naux)) % m1_j).into_shape((nvir, nvir));
     for k in 0..nocc {
-        l_vv -= (m2a_ov + m1b_ov).i(k) % b_ov.i(k).t();
+        l_vv -= (m2a_ov.i(k) + m1b_ov.i(k)) % b_ov.i(k).t();
     }
 
-    rhs2 += (t2.reshape((-1, nvir)) % l_vv.t()).into_shape((nocc, nocc, nvir, nvir));
+    // the following line is intutive, but memory footprint is too large
+    // rhs2 += (t2.reshape((-1, nvir)) % l_vv.t()).into_shape((nocc, nocc, nvir, nvir));
+
+    // change mutable tensor shape, then use memory-friendly `matmul_from`
+    let mut rhs2 = rt::asarray((rhs2.raw_mut(), [nocc * nocc * nvir, nvir].c(), &device));
+    rhs2.matmul_from(&t2.reshape((-1, nvir)), &l_vv.t(), 1.0, 1.0);
 }
 
 pub fn get_riccsd_rhs2_direct_dot(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &RCCSDIntermediates) {
@@ -281,11 +300,10 @@ pub fn get_riccsd_rhs2_o3v3(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &
     // RHS2 += np.einsum("ikca, jkcb -> ijab", - scr4 + scr2 - scr3, t2t)
     // RHS2 += np.einsum("ikcb, jkca -> ijab", - scr4 + 0.5 * scr2, t2)
 
-    let t2t = t2.swapaxes(-1, -2).into_layout(t2.shape().c());
     let scr_ikP = b_oo + m1_oo;
     let scr_acP = b_vv - m1_vv;
 
-    let scr1: Tsr = rt::zeros(([nocc, nocc, nvir, nvir], &device));
+    let scr1 = unsafe { rt::empty(([nocc, nocc, nvir, nvir], &device)) };
     (0..nocc).into_par_iter().for_each(|k| {
         (0..k + 1).into_par_iter().for_each(|l| {
             let mut scr1 = unsafe { scr1.force_mut() };
@@ -298,25 +316,28 @@ pub fn get_riccsd_rhs2_o3v3(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &
     });
 
     (0..nocc).into_par_iter().for_each(|i| {
-        let scr2 = rt::zeros(([nocc, nvir, nvir], &device));
-        let scr3 = rt::zeros(([nocc, nvir, nvir], &device));
-        let scr4 = rt::zeros(([nocc, nvir, nvir], &device));
+        let t2t_i = t2.swapaxes(0, 1).i(i).into_contig(RowMajor);
+        let scr2 = unsafe { rt::empty(([nocc, nvir, nvir], &device)) };
+        let scr3 = unsafe { rt::empty(([nocc, nvir, nvir], &device)) };
+        let scr4 = unsafe { rt::empty(([nocc, nvir, nvir], &device)) };
         (0..nocc).into_par_iter().for_each(|k| {
             let mut scr2 = unsafe { scr2.force_mut() };
             let mut scr3 = unsafe { scr3.force_mut() };
             scr2.i_mut(k).matmul_from(&scr1.i(k).reshape((-1, nvir)).t(), &t2.i(i).reshape((-1, nvir)), 1.0, 0.0);
-            scr3.i_mut(k).matmul_from(&scr1.i(k).reshape((-1, nvir)).t(), &t2t.i(i).reshape((-1, nvir)), 1.0, 0.0);
+            scr3.i_mut(k).matmul_from(&scr1.i(k).reshape((-1, nvir)).t(), &t2t_i.reshape((-1, nvir)), 1.0, 0.0);
         });
         (0..nvir).into_par_iter().for_each(|c| {
             let mut scr4 = unsafe { scr4.force_mut() };
             scr4.i_mut((.., c)).matmul_from(&scr_ikP.i(i), &scr_acP.i((.., c)).t(), 1.0, 0.0);
         });
-        let scr5: Tsr = -scr3 - &scr4 + &scr2;
-        let scr6: Tsr = -scr4 + 0.5 * &scr2;
+        let scr5 = -scr3 - &scr4 + &scr2;
+        let scr6 = -scr4 + 0.5_f64 * &scr2;
         (0..nocc).into_par_iter().for_each(|j| {
             let mut rhs2 = unsafe { rhs2.force_mut() };
-            rhs2.i_mut((i, j)).matmul_from(&scr5.reshape((-1, nvir)).t(), &t2t.i(j).reshape((-1, nvir)), 1.0, 1.0);
-            rhs2.i_mut((i, j)).matmul_from(&t2.i(j).reshape((-1, nvir)).t(), &scr6.reshape((-1, nvir)), 1.0, 1.0);
+            for k in 0..nocc {
+                rhs2.i_mut((i, j)).matmul_from(&scr5.i(k).t(), &t2.i((k, j)), 1.0, 1.0);
+                rhs2.i_mut((i, j)).matmul_from(&t2.i((j, k)).t(), &scr6.i(k), 1.0, 1.0);
+            }
         });
     });
 }
@@ -370,14 +391,30 @@ pub fn get_riccsd_rhs2_o4v2(
         });
     });
 
-    scr_ijkl += (t2.reshape((nocc * nocc, -1)) % scr_klcd.reshape((nocc * nocc, -1)).t()).reshape(scr_ijkl.shape());
-    let tau2 = &t2 + t1.i((.., None, .., None)) * t1.i((None, .., None, ..));
-    rhs2 += 0.5 * (scr_ijkl.reshape((nocc * nocc, -1)) % tau2.reshape((-1, nvir * nvir))).into_shape(t2.shape());
+    // scr_ijkl += (t2.reshape((nocc * nocc, -1)) % scr_klcd.reshape((nocc * nocc, -1)).t()).reshape(scr_ijkl.shape());
+    let mut scr_ijkl_mut = rt::asarray((scr_ijkl.raw_mut(), [nocc * nocc, nocc * nocc].c(), &device));
+    scr_ijkl_mut.matmul_from(&t2.reshape((nocc * nocc, -1)), &scr_klcd.reshape((nocc * nocc, -1)).t(), 1.0, 1.0);
+
+    // the following line is intutive, but memory footprint is too large
+    // let tau2 = &t2; // + t1.i((.., None, .., None)) * t1.i((None, .., None, ..));
+    // rhs2 += 0.5 * (scr_ijkl.reshape((nocc * nocc, -1)) % tau2.reshape((-1, nvir * nvir))).into_shape(t2.shape());
+
+    // t1 contraction to rhs2
+    (0..nocc).into_par_iter().for_each(|i| {
+        (0..nocc).into_par_iter().for_each(|j| {
+            let mut rhs2 = unsafe { rhs2.force_mut() };
+            *&mut rhs2.i_mut((i, j)) += 0.5 * t1.t() % scr_ijkl.i((i, j)) % &t1;
+        });
+    });
+
+    // t2 contraction to rhs2
+    let mut rhs2 = rt::asarray((rhs2.raw_mut(), [nocc * nocc, nvir * nvir].c(), &device));
+    rhs2.matmul_from(&scr_ijkl.reshape((nocc * nocc, -1)), &t2.reshape((-1, nvir * nvir)), 0.5, 1.0);
 }
 
 pub fn get_riccsd_rhs2_o2v4(
     mol_info: &RCCSDInfo,
-    mut rhs2: TsrMut,
+    rhs2: TsrMut,
     intermediates: &RCCSDIntermediates,
     t1: TsrView,
     t2: TsrView,
@@ -397,16 +434,14 @@ pub fn get_riccsd_rhs2_o2v4(
     // RHS2 += 0.5 * np.einsum("abcd, ijcd   -> ijab", Wvvvv, t2,   )
     // RHS2 += 0.5 * np.einsum("abcd, ic, jd -> ijab", Wvvvv, t1, t1)
 
-    let rhs_ppl: Tsr<Ix4> = rt::zeros(([nocc, nocc, nvir, nvir], &device)).into_dim::<Ix4>();
-    let tau2 = t2 + t1.i((.., None, .., None)) * t1.i((None, .., None, ..));
-
+    // batch initialization
     let nbatch_a = 8;
     let nbatch_b = 32;
     let mut batched_slices = vec![];
     for a_start in (0..nvir).step_by(nbatch_a) {
         let a_end = (a_start + nbatch_a).min(nvir);
         for b_start in (0..a_end).step_by(nbatch_b) {
-            let b_end = (b_start + nbatch_b).min(nvir);
+            let b_end = (b_start + nbatch_b).min(a_end);
             batched_slices.push(([a_start, a_end], [b_start, b_end]));
         }
     }
@@ -414,42 +449,64 @@ pub fn get_riccsd_rhs2_o2v4(
     batched_slices.into_par_iter().for_each(|([a_start, a_end], [b_start, b_end])| {
         let nbatch_a = a_end - a_start;
         let nbatch_b = b_end - b_start;
-        let sa = slice!(a_start, a_end);
-        let sb = slice!(b_start, b_end);
 
+        // generate Wvvvv in batch (a, b)
         let mut scr_abcd: Tsr = rt::zeros(([nbatch_a, nbatch_b, nvir, nvir], &device));
-        // delibrately use serial loop here, but should be possible to be paralleled
         for a in 0..nbatch_a {
-            let scr_a_cP = b_vv.i(a + a_start) - m1_vv.i(a + a_start);
+            let a_shift = a + a_start;
+            let scr_a_cP = b_vv.i(a_shift) - m1_vv.i(a_shift);
             for b in 0..nbatch_b {
-                let scr_b_dP = b_vv.i(b + b_start) - m1_vv.i(b + b_start);
+                let b_shift = b + b_start;
+                let scr_b_dP = b_vv.i(b_shift) - m1_vv.i(b_shift);
                 scr_abcd.i_mut((a, b)).matmul_from(&scr_a_cP, &scr_b_dP.t(), 1.0, 1.0);
-                scr_abcd.i_mut((a, b)).matmul_from(&m1_vv.i(a + a_start), &m1_vv.i(b + b_start).t(), -1.0, 1.0);
+                scr_abcd.i_mut((a, b)).matmul_from(&m1_vv.i(a_shift), &m1_vv.i(b_shift).t(), -1.0, 1.0);
             }
         }
 
-        let scr_ijab: Tsr = 0.5 * (tau2.reshape((nocc * nocc, -1)) % scr_abcd.reshape((nbatch_a * nbatch_b, -1)).t());
-        let scr_ijab = scr_ijab.into_shape((nocc, nocc, nbatch_a, nbatch_b)).into_dim::<Ix4>();
+        // t2 contribution from tau2
+        let mut scr_ijab: Tsr = unsafe { rt::empty(([nocc * nocc, nbatch_a * nbatch_b], &device)) };
+        scr_ijab.matmul_from(
+            &t2.reshape((nocc * nocc, -1)),
+            &scr_abcd.reshape((nbatch_a * nbatch_b, -1)).t(),
+            0.5,
+            0.0,
+        );
 
-        let mut rhs_ppl = unsafe { rhs_ppl.force_mut() };
-        *&mut rhs_ppl.i_mut((.., .., sa, sb)) += scr_ijab;
-    });
+        // t1 contribution from tau2
+        let mut scr_ijab = scr_ijab.into_shape((nocc, nocc, nbatch_a, nbatch_b));
+        for a in 0..nbatch_a {
+            for b in 0..nbatch_b {
+                *&mut scr_ijab.i_mut((.., .., a, b)) += 0.5 * &t1 % scr_abcd.i((a, b)) % t1.t();
+            }
+        }
 
-    (0..nocc).into_par_iter().for_each(|i| {
-        (0..nocc).into_par_iter().for_each(|j| {
-            let mut rhs_ppl = unsafe { rhs_ppl.force_mut() };
-            for a in 0..nvir {
-                for b in 0..a {
-                    unsafe {
-                        let rhs_ppl_jiab = *rhs_ppl.index_uncheck([j, i, a, b]);
-                        *rhs_ppl.index_mut_uncheck([i, j, b, a]) = rhs_ppl_jiab;
+        // increment rhs2 from scr_ijab with symmetry
+        for i in 0..nocc {
+            for j in 0..nocc {
+                let rhs2_ij = rhs2.i((i, j)).into_dim::<Ix2>();
+                let rhs2_ji = rhs2.i((j, i)).into_dim::<Ix2>();
+                let mut rhs2_ij = unsafe { rhs2_ij.force_mut() };
+                let mut rhs2_ji = unsafe { rhs2_ji.force_mut() };
+                let scr_ij = scr_ijab.i((i, j)).into_dim::<Ix2>();
+
+                for a in 0..nbatch_a {
+                    let a_shift = a + a_start;
+                    for b in 0..nbatch_b {
+                        let b_shift = b + b_start;
+                        unsafe {
+                            if a_shift > b_shift {
+                                let scr_val = scr_ij.index_uncheck([a, b]);
+                                *rhs2_ij.index_mut_uncheck([a_shift, b_shift]) += scr_val;
+                                *rhs2_ji.index_mut_uncheck([b_shift, a_shift]) += scr_val;
+                            } else if a_shift == b_shift {
+                                *rhs2_ij.index_mut_uncheck([a_shift, b_shift]) += scr_ij.index_uncheck([a, b]);
+                            }
+                        }
                     }
                 }
             }
-        });
+        }
     });
-
-    rhs2 += rhs_ppl;
 }
 
 pub fn get_riccsd_initial_guess(mol_info: &RCCSDInfo, intermediates: &RCCSDIntermediates) -> RCCSDResults {
@@ -470,15 +527,16 @@ pub fn get_riccsd_initial_guess(mol_info: &RCCSDInfo, intermediates: &RCCSDInter
     let e_corr_oo = rt::zeros(([nocc, nocc], &device));
     (0..nocc).into_par_iter().for_each(|i| {
         (0..i + 1).into_par_iter().for_each(|j| {
+            let g2_ab = b_ov.i(i) % b_ov.i(j).t();
             let d2_ab = d_ov.i((i, .., None)) + d_ov.i((j, None, ..));
-            let t2_ab = (b_ov.i(i) % b_ov.i(j).t()) / &d2_ab;
+            let t2_ab = &g2_ab / &d2_ab;
             let mut t2 = unsafe { t2.force_mut() };
             t2.i_mut((i, j)).assign(&t2_ab);
             if i != j {
                 t2.i_mut((j, i)).assign(&t2_ab.t());
             }
-            let e_bi1 = (&t2_ab * &t2_ab * &d2_ab).sum_all();
-            let e_bi2 = (&t2_ab * &t2_ab.swapaxes(-1, -2) * &d2_ab).sum_all();
+            let e_bi1 = (&t2_ab * &g2_ab).sum_all();
+            let e_bi2 = (&t2_ab * &g2_ab.swapaxes(-1, -2)).sum_all();
             let e_corr_ij = 2.0 * e_bi1 - e_bi2;
             let mut e_corr_oo = unsafe { e_corr_oo.force_mut() };
             *e_corr_oo.index_mut([i, j]) = e_corr_ij;
@@ -607,7 +665,7 @@ pub fn riccsd_iteration(mol_info: &RCCSDInfo, cc_config: &CCSDConfig) -> (RCCSDR
     let timer = std::time::Instant::now();
     let mut intermediates = RCCSDIntermediates::default();
     get_riccsd_intermediates_cderi(mol_info, &mut intermediates);
-    println!("Time elapsed (cderi ao2mo): {:?}", timer.elapsed());
+    println!("Time elapsed (cderi in mo): {:?}", timer.elapsed());
 
     // initial guess
     let timer = std::time::Instant::now();

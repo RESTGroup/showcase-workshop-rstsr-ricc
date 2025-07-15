@@ -7,6 +7,8 @@
 
 在本节中，我们经常将密度矩阵 $D_{\mu \nu}$ 看作 $n_\mathrm{basis}^2$ 长度的 1-D 向量，而非 $n_\mathrm{basis} \times n_\mathrm{basis}$ 的 2-D 矩阵。类似地，4c-2e 双电子积分经常看作是 $n_\mathrm{basis}^2 \times n_\mathrm{basis}^2$ 的 2-D 矩阵，而非 $n_\mathrm{basis} \times n_\mathrm{basis} \times n_\mathrm{basis} \times n_\mathrm{basis}$ 的 4-D 张量。
 
+## 目录
+
 <!-- toc -->
 
 ## 1. RI-RHF 回顾

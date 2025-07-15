@@ -45,7 +45,7 @@ fn get_w(abc: [usize; 3], mut w: TsrMut, wbuf: TsrMut, intermediates: &RCCSDTInt
     let w_raw = w.raw_mut();
     let wbuf_raw = wbuf.raw();
     w_raw.iter_mut().zip(tr_indices).for_each(|(w_elem, &tr_idx)| {
-        *w_elem += unsafe { wbuf_raw.get_unchecked(tr_idx) };
+        *w_elem += wbuf_raw[tr_idx];
     });
 }
 
@@ -97,11 +97,11 @@ fn ccsd_t_energy_contribution(
     )
     .fold(0.0, |acc, (((i, j), k), &w_val, &d_ijk, &tr_012, &tr_120, &tr_201, &tr_210, &tr_021, &tr_102)| unsafe {
         let v_val = w_val
-            + t1_t_a.raw().get_unchecked(i) * eri_vvoo_t_bc.index_uncheck([j, k])
-            + t1_t_b.raw().get_unchecked(j) * eri_vvoo_t_ca.index_uncheck([k, i])
-            + t1_t_c.raw().get_unchecked(k) * eri_vvoo_t_ab.index_uncheck([i, j]);
-        let z_val = 4.0 * w_raw.get_unchecked(tr_012) + w_raw.get_unchecked(tr_120) + w_raw.get_unchecked(tr_201)
-            - 2.0 * (w_raw.get_unchecked(tr_210) + w_raw.get_unchecked(tr_021) + w_raw.get_unchecked(tr_102));
+            + t1_t_a.raw()[i] * eri_vvoo_t_bc.index_uncheck([j, k])
+            + t1_t_b.raw()[j] * eri_vvoo_t_ca.index_uncheck([k, i])
+            + t1_t_c.raw()[k] * eri_vvoo_t_ab.index_uncheck([i, j]);
+        let z_val =
+            4.0 * w_raw[tr_012] + w_raw[tr_120] + w_raw[tr_201] - 2.0 * (w_raw[tr_210] + w_raw[tr_021] + w_raw[tr_102]);
         let d_val = d_abc + d_ijk;
         acc + z_val * v_val / d_val
     });
