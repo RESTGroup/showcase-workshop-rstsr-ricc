@@ -320,3 +320,154 @@ fn ccsd_t_energy_contribution(abc: [usize; 3], mol_info: &RCCSDInfo, intermediat
 - CPU 性能利用率不低于 21%。
 
 ## 5. RI-RCCSD(T) 高性能实现
+
+### 5.1 效率改进方案与实现
+
+上述程序的程序性能主要受制于下面几个因素：
+- 低效的张量索引；
+- 较为低效的 elementwise 运算；
+- 过分频繁的内存分配；
+
+作为解决方案，
+
+A. 整个程序经常处理张量转置；注意到每次循环时，张量的转置顺序都是固定的，那么可以在外循环前先将转置顺序储存为数组，以避免每次循环内再对转置的位置作计算。
+
+```rust
+// ri_rccsdt.rs
+
+pub struct TransposedIndices {
+    pub tr_012: Vec<usize>,
+    pub tr_021: Vec<usize>,
+    pub tr_102: Vec<usize>,
+    pub tr_120: Vec<usize>,
+    pub tr_201: Vec<usize>,
+    pub tr_210: Vec<usize>,
+}
+
+fn prepare_transposed_indices(nocc: usize) -> TransposedIndices {
+    let device = DeviceTsr::default();
+    let base = rt::arange((nocc * nocc * nocc, &device)).into_shape([nocc, nocc, nocc]);
+    let tr_012 = base.transpose([0, 1, 2]).reshape(-1).to_vec();
+    let tr_021 = base.transpose([0, 2, 1]).reshape(-1).to_vec();
+    let tr_102 = base.transpose([1, 0, 2]).reshape(-1).to_vec();
+    let tr_120 = base.transpose([1, 2, 0]).reshape(-1).to_vec();
+    let tr_201 = base.transpose([2, 0, 1]).reshape(-1).to_vec();
+    let tr_210 = base.transpose([2, 1, 0]).reshape(-1).to_vec();
+
+    TransposedIndices { tr_012, tr_021, tr_102, tr_120, tr_201, tr_210 }
+}
+```
+
+B. 为了避免频繁的内存分配，在计算 $W_{ijk}^{[abc]}$ 时，应在调用函数 `get_w` 时重复使用先前的内存 buffer，输出张量应尽量避免新分配内存。下述代码也引入了 `tr_indices`，这就是上面提到的预先存储好的转置顺序。
+
+```rust
+// ri_rccsdt.rs
+
+fn get_w(abc: [usize; 3], mut w: TsrMut, mut wbuf: TsrMut, intermediates: &RCCSDTIntermediates, tr_indices: &[usize]) {
+    let t2_t = intermediates.t2_t.as_ref().unwrap();
+    let eri_vvov_t = intermediates.eri_vvov_t.as_ref().unwrap();
+    let eri_vooo_t = intermediates.eri_vooo_t.as_ref().unwrap();
+    let device = t2_t.device().clone();
+    let nvir = t2_t.shape()[0];
+    let nocc = t2_t.shape()[2];
+
+    let [a, b, c] = abc;
+
+    // hack for TsrMut to reshape to nocc, nocc * nocc
+    let mut wbuf = rt::asarray((wbuf.raw_mut(), [nocc, nocc * nocc].c(), &device));
+    wbuf.matmul_from(&eri_vvov_t.i([a, b]), &t2_t.i(c).reshape([nvir, nocc * nocc]), 1.0, 0.0);
+    wbuf.matmul_from(&t2_t.i([a, b]).t(), &eri_vooo_t.i(c).reshape([nocc, nocc * nocc]), -1.0, 1.0);
+
+    // add to w with transposed indices
+    let w_raw = w.raw_mut();
+    let wbuf_raw = wbuf.raw();
+    w_raw.iter_mut().zip(tr_indices).for_each(|(w_elem, &tr_idx)| {
+        *w_elem += wbuf_raw[tr_idx];
+    });
+}
+```
+
+```rust
+// ri_rccsdt.rs, in fn `ccsd_t_energy_contribution`
+
+let mut w = rt::zeros(([nocc, nocc, nocc], &device));
+let mut wbuf = unsafe { rt::empty(([nocc, nocc, nocc], &device)) };
+
+get_w([a, b, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_012);
+get_w([a, c, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_021);
+get_w([b, c, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_201);
+get_w([b, a, c], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_102);
+get_w([c, a, b], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_120);
+get_w([c, b, a], w.view_mut(), wbuf.view_mut(), intermediates, &tr_indices.tr_210);
+```
+
+C. 涉及到的 elementwise 运算中，计算 $V_{ijk}^{[abc]}$ 时使用到了 broadcast 数乘；但目前 RSTSR 的 broadcast elementwise 运算的实现效率仅仅满足一般需求，其性能没有达到极限。如果确实是 broadcast elementwise 导致性能低下，建议手动展开 for 循环。
+
+D. 用于计算 $V_{ijk}^{[abc]}$ 的 broadcast elementwise 运算，若手动展开 for 循环，则需要对张量进行索引。为更高效地进行张量索引，一般需要做三件事：
+    - 在确保索引不会越界的情况下，使用 `index_uncheck` 以避免越界检查 (这是决定性因素)；
+    - 低维度的索引代价总是小于高维度；尽可能先取出子张量，对更低维度的子张量进行索引；
+    - 若在索引前能确保张量维度的大小，则尽量通过 `into_dim` 转换到静态维度。
+
+E. 如果是多步计算，譬如计算 $Z_{ijk}^{[abc]}$ 时涉及到多个张量的求和，对于这种情形最好使用迭代器以避免多次写入：对于特定的指标 $(i, j, k)$ 多次读入张量并求和、但只写入一次到 $Z_{ijk}^{[abc]}$[^2]。
+
+[^2]: 这也是 RSTSR 目前不擅长的部分，即它不支持延迟计算 (lazy evaluation)。不引入延迟计算，既是出于使用者方便的角度，也可以减少 RSTSR 开发者维护的难度。对于 C++ 中支持延迟计算的库，可以参考 Eigen。RSTSR 的张量支持各种迭代器 (依元素迭代或依特定维度迭代)，并支持并行迭代。利用这些迭代器，也可以提升计算效率，避免多次写入；当然，这里高性能的 RI-RCCSD(T) 的实现是依预先存储的指针位置进行迭代，这个实现策略的性能更高但技巧性太强。
+
+F. 实际上，当 $W_{ijk}^{[abc]}$ 计算完毕后，后面的计算中，内循环的指标 $(i, j, k)$ 之间其实没有关联。这意味着不需要对张量 $V_{ijk}^{[abc]}$、$Z_{ijk}^{[abc]}$、$\Delta_{ijk}^{[abc]}$ 作新的内存分配或存储；他们的数值随内循环 $(i, j, k)$ 的迭代生成求得能量的贡献 (通过 `fold` 函数实现能量贡献的累加)，就可以直接消亡。
+
+```rust
+// ri_rccsdt.rs, in fn `ccsd_t_energy_contribution`
+
+let eri_vvoo_t_ab = eri_vvoo_t.i([a, b]).into_dim::<Ix2>();
+let eri_vvoo_t_bc = eri_vvoo_t.i([b, c]).into_dim::<Ix2>();
+let eri_vvoo_t_ca = eri_vvoo_t.i([c, a]).into_dim::<Ix2>();
+let t1_t_a = t1_t.i(a).into_dim::<Ix1>();
+let t1_t_b = t1_t.i(b).into_dim::<Ix1>();
+let t1_t_c = t1_t.i(c).into_dim::<Ix1>();
+let iter_ijk = (0..nocc).cartesian_product(0..nocc).cartesian_product(0..nocc);
+let d_abc = -(ev[[a]] + ev[[b]] + ev[[c]]);
+let w_raw = w.raw();
+
+let e_sum = izip!(
+    iter_ijk,
+    w.raw().iter(),
+    d_ooo.raw().iter(),
+    tr_indices.tr_012.iter(),
+    tr_indices.tr_120.iter(),
+    tr_indices.tr_201.iter(),
+    tr_indices.tr_210.iter(),
+    tr_indices.tr_021.iter(),
+    tr_indices.tr_102.iter()
+)
+.fold(0.0, |acc, (((i, j), k), &w_val, &d_ijk, &tr_012, &tr_120, &tr_201, &tr_210, &tr_021, &tr_102)| unsafe {
+    let v_val = w_val
+        + t1_t_a.raw()[i] * eri_vvoo_t_bc.index_uncheck([j, k])
+        + t1_t_b.raw()[j] * eri_vvoo_t_ca.index_uncheck([k, i])
+        + t1_t_c.raw()[k] * eri_vvoo_t_ab.index_uncheck([i, j]);
+    let z_val =
+        4.0 * w_raw[tr_012] + w_raw[tr_120] + w_raw[tr_201] - 2.0 * (w_raw[tr_210] + w_raw[tr_021] + w_raw[tr_102]);
+    let d_val = d_abc + d_ijk;
+    acc + z_val * v_val / d_val
+});
+
+let fac = if a == c {
+    1.0 / 3.0
+} else if a == b || b == c {
+    1.0
+} else {
+    2.0
+};
+
+fac * e_sum
+```
+
+### 5.2 性能评价
+
+| 计算表达式 | FLOPs 解析式 | FLOPs 实际数值 |
+|--|--|--:|
+| $W'{}_{ijk}^{abc} \leftarrow \sum_{d} g_{abid} t_{cdjk}$ | $2 n_\mathrm{occ}^3 n_\mathrm{vir}^4$ | 296 TFLOPs |
+| $W'{}_{ijk}^{abc} \leftarrow - \sum_{l} t_{abli} g_{cljk}$ | $2 n_\mathrm{occ}^4 n_\mathrm{vir}^3$ | 78 TFLOPs |
+| 总计 | | 374 TFLOPs |
+
+- 这里我们没有统计其他 $O(N^6)$ 的计算步骤；
+- 计算耗时约 1003 sec，实际运行效率不低于 0.37 TFLOP/sec；
+- CPU 性能利用率不低于 34%。

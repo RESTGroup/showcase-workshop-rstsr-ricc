@@ -76,9 +76,9 @@ fn ccsd_t_energy_contribution(
     let eri_vvoo_t_ab = eri_vvoo_t.i([a, b]).into_dim::<Ix2>();
     let eri_vvoo_t_bc = eri_vvoo_t.i([b, c]).into_dim::<Ix2>();
     let eri_vvoo_t_ca = eri_vvoo_t.i([c, a]).into_dim::<Ix2>();
-    let t1_t_a = t1_t.i(a).into_dim::<Ix1>().to_owned();
-    let t1_t_b = t1_t.i(b).into_dim::<Ix1>().to_owned();
-    let t1_t_c = t1_t.i(c).into_dim::<Ix1>().to_owned();
+    let t1_t_a = t1_t.i(a).into_dim::<Ix1>();
+    let t1_t_b = t1_t.i(b).into_dim::<Ix1>();
+    let t1_t_c = t1_t.i(c).into_dim::<Ix1>();
     let iter_ijk = (0..nocc).cartesian_product(0..nocc).cartesian_product(0..nocc);
     let d_abc = -(ev[[a]] + ev[[b]] + ev[[c]]);
     let w_raw = w.raw();
