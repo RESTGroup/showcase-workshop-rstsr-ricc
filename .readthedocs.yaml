@@ -4,9 +4,6 @@ build:
   os: ubuntu-lts-latest
   tools:
     rust: latest
-  jobs:
-    install:
+  commands:
       - cargo install mdbook mdbook-katex mdbook-toc mdbook-admonish
-    build:
-      html:
-        - mdbook build docs --dest-dir $READTHEDOCS_OUTPUT/html
+      - mdbook build docs --dest-dir $READTHEDOCS_OUTPUT/html
