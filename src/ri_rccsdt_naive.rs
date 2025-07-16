@@ -54,9 +54,11 @@ pub fn get_riccsd_pt_energy(
         + mo_energy.i((None, None, None, so, None, None))
         + mo_energy.i((None, None, None, None, so, None))
         + mo_energy.i((None, None, None, None, None, so));
-    let wt = 4.0_f64 * &w + w.transpose((1, 2, 0, 3, 4, 5)) + w.transpose((2, 0, 1, 3, 4, 5));
-    let vt = &v - v.transpose((2, 1, 0, 3, 4, 5));
-    let e_corr_pt = (wt * vt / &d).sum() / 3.0;
+    let z: Tsr = 4 * &w + w.transpose((0, 1, 2, 4, 5, 3)) + w.transpose((0, 1, 2, 5, 3, 4))
+        - 2 * w.transpose((0, 1, 2, 5, 4, 3))
+        - 2 * w.transpose((0, 1, 2, 3, 5, 4))
+        - 2 * w.transpose((0, 1, 2, 4, 3, 5));
+    let e_corr_pt = (z * v / &d).sum() / 3.0;
 
     println!("Time elapsed (CCSD(T) computation): {:?}", time.elapsed());
     println!("Total time elapsed (CCSD(T) energy): {:?}", time_outer.elapsed());

@@ -22,22 +22,21 @@ fn prepare_transposed_indices(nocc: usize) -> TransposedIndices {
     TransposedIndices { tr_012, tr_021, tr_102, tr_120, tr_201, tr_210 }
 }
 
-fn get_w(abc: [usize; 3], mut w: TsrMut, wbuf: TsrMut, intermediates: &RCCSDTIntermediates, tr_indices: &[usize]) {
+fn get_w(abc: [usize; 3], mut w: TsrMut, mut wbuf: TsrMut, intermediates: &RCCSDTIntermediates, tr_indices: &[usize]) {
     // + np.einsum("id, djk -> ijk", eri_vvov_t[a, b], t2_t[c])
     // - np.einsum("ljk, li -> ijk", eri_vooo_t[c], t2_t[a, b])
 
     let t2_t = intermediates.t2_t.as_ref().unwrap();
     let eri_vvov_t = intermediates.eri_vvov_t.as_ref().unwrap();
     let eri_vooo_t = intermediates.eri_vooo_t.as_ref().unwrap();
+    let device = t2_t.device().clone();
     let nvir = t2_t.shape()[0];
     let nocc = t2_t.shape()[2];
 
     let [a, b, c] = abc;
 
     // hack for TsrMut to reshape to nocc, nocc * nocc
-    let wbuf_layout = [nocc, nocc * nocc].c();
-    let (wbuf_storage, _) = wbuf.into_raw_parts();
-    let mut wbuf = TsrMut::new(wbuf_storage, wbuf_layout);
+    let mut wbuf = rt::asarray((wbuf.raw_mut(), [nocc, nocc * nocc].c(), &device));
     wbuf.matmul_from(&eri_vvov_t.i([a, b]), &t2_t.i(c).reshape([nvir, nocc * nocc]), 1.0, 0.0);
     wbuf.matmul_from(&t2_t.i([a, b]).t(), &eri_vooo_t.i(c).reshape([nocc, nocc * nocc]), -1.0, 1.0);
 
