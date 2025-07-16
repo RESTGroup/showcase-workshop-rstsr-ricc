@@ -97,7 +97,7 @@ fn ccsd_t_energy_contribution(abc: [usize; 3], mol_info: &RCCSDInfo, intermediat
         + get_w([c, b, a], intermediates).transpose([2, 1, 0]);
     let v = &w
         + t1_t.i((a, .., None, None)) * eri_vvoo_t.i([b, c]).i((None, .., ..))
-        + t1_t.i((b, None, .., None)) * eri_vvoo_t.i([c, a]).t().i((.., None, ..))
+        + t1_t.i((b, None, .., None)) * eri_vvoo_t.i([a, c]).i((.., None, ..))
         + t1_t.i((c, None, None, ..)) * eri_vvoo_t.i([a, b]).i((.., .., None));
     let d = -(ev[[a]] + ev[[b]] + ev[[c]]) + d_ooo;
     let z = 4.0 * &w + w.transpose([1, 2, 0]) + w.transpose([2, 0, 1])
