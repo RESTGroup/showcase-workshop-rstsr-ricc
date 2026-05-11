@@ -303,7 +303,7 @@ pub fn get_riccsd_rhs2_o3v3(mol_info: &RCCSDInfo, rhs2: TsrMut, intermediates: &
     let scr_ikP = b_oo + m1_oo;
     let scr_acP = b_vv - m1_vv;
 
-    let scr1 = unsafe { rt::empty(([nocc, nocc, nvir, nvir], &device)) };
+    let scr1: Tsr = unsafe { rt::empty(([nocc, nocc, nvir, nvir], &device)) };
     (0..nocc).into_par_iter().for_each(|k| {
         (0..k + 1).into_par_iter().for_each(|l| {
             let mut scr1 = unsafe { scr1.force_mut() };
@@ -559,7 +559,8 @@ pub fn get_amplitude_from_rhs(mol_info: &RCCSDInfo, rhs1: Tsr, rhs2: Tsr) -> (Ts
 
     let d_ov = mo_energy.i((so, None)) - mo_energy.i((None, sv));
     let t1_new = rhs1 / &d_ov;
-    // let t2_new = (&rhs2 + rhs2.transpose((1, 0, 3, 2))) / (d_ov.i((.., None, .., None)) + d_ov.i((None, .., None, ..)));
+    // let t2_new = (&rhs2 + rhs2.transpose((1, 0, 3, 2))) / (d_ov.i((.., None, .., None)) + d_ov.i((None, .., None,
+    // ..)));
     let t2_new = rhs2;
     (0..nocc).into_par_iter().for_each(|i| {
         (0..i + 1).into_par_iter().for_each(|j| {

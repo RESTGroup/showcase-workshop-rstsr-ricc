@@ -176,7 +176,8 @@ impl DIISIncore {
         let prev = self.intermediates.prev;
 
         // specical case: if head is the same to prev, then it means the last extrapolated vector has the maximum error;
-        // then the function will infinite loops if remove the maximum error vector; so some code need to avoid this case.
+        // then the function will infinite loops if remove the maximum error vector; so some code need to avoid this
+        // case.
         let head = if head == prev && head.is_some() {
             eprintln!(concat!(
                 "DIIS error seems not good.\n",

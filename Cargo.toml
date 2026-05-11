@@ -9,9 +9,9 @@ clap = { version = "4.5", features = ["derive"] }
 npyz = { version = "0.8" }
 itertools = { version = "0.14" }
 
-libcint = { version = "0.1", features = ["build_from_source", "static"] }
-rstsr = { version = "0.3.9", features = ["linalg", "sci"] }
-rstsr-openblas = { version = "0.3.9", features = ["openmp"], optional = true }
+libcint = { version = "0.3", features = ["build_from_source", "static"] }
+rstsr = { version = "0.7", features = ["linalg", "sci"] }
+rstsr-openblas = { version = "0.7", features = ["openmp"], optional = true }
 
 [features]
 use_openblas = ["dep:rstsr-openblas", "rstsr/openblas", "rstsr-openblas/openmp"]
