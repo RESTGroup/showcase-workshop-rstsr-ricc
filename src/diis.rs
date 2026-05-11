@@ -245,8 +245,8 @@ impl DIISIncore {
         let num_space = self.intermediates.err_map.len();
         if num_space == 0 {
             // no vectors in the DIIS space
-            if self.intermediates.vec_prev.is_some() {
-                return self.intermediates.vec_prev.as_ref().unwrap().to_owned();
+            if let Some(vec_prev) = &self.intermediates.vec_prev {
+                return vec_prev.to_owned();
             } else {
                 // no vectors in the DIIS space and no zero-th vector
                 // this is considered as error
@@ -302,8 +302,8 @@ impl DIISIncore {
         self.insert(vec, None, err, iteration);
         let vec = self.extrapolate();
         // self.intermediates.vec_prev = Some(vec.to_owned());
-        if self.intermediates.vec_prev.is_some() {
-            self.intermediates.vec_prev.as_mut().unwrap().assign(&vec);
+        if let Some(vec_prev) = &mut self.intermediates.vec_prev {
+            vec_prev.assign(&vec);
         } else {
             self.intermediates.vec_prev = Some(vec.clone());
         }
