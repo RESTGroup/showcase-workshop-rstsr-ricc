@@ -5,5 +5,5 @@ build:
   tools:
     rust: latest
   commands:
-      - cargo install mdbook@=0.4 mdbook-toc@=0.14 mdbook-katex=@0.9 mdbook-admonish@=1.20
+      - cargo install mdbook@=0.4 mdbook-toc@=0.14 mdbook-katex@=0.9 mdbook-admonish@=1.20
       - mdbook build docs --dest-dir $READTHEDOCS_OUTPUT/html
