@@ -1,0 +1,16 @@
+name: test-h2o
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test-playground-ri-ccsdt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: run h2o test (playground_ri_ccsdt)
+        run: |
+          cargo test --lib -- playground_ri_ccsdt --exact --nocapture

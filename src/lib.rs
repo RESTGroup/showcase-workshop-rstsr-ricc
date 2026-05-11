@@ -74,6 +74,11 @@ fn playground_ri_ccsdt() {
     let aux_cint_data = CIntMol::from_toml(h2o_def2_jk_initializer).cint;
     let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &aux_cint_data);
 
+    // pyscf reference:
+    // mol = gto.Mole(atom="O; H 1 0.94; H 1 0.94 2 104.5", basis="def2-TZVP").build()
+    // mf = scf.RHF(mol).density_fit().run()
+    assert!((rhf_results.e_tot - (-76.0594504483582)).abs() < 1e-6);
+
     let ccsd_info = RCCSDInfo {
         cint_data,
         aux_cint_data,
@@ -85,20 +90,30 @@ fn playground_ri_ccsdt() {
     let (ccsd_results, ccsd_intrm) = ri_rccsd::riccsd_iteration(&ccsd_info, &ccsd_config);
     println!("CCSD Corr Energy: {}", ccsd_results.e_corr);
 
+    // pyscf reference:
+    // mf_cc = cc.CCSD(mf).run()
+    assert!((ccsd_results.e_corr - (-0.2782191383258219)).abs() < 1e-6);
+
     println!("======");
 
     let ccsdt_results = ri_rccsdt_naive::get_riccsd_pt_energy(&ccsd_info, &ccsd_intrm, &ccsd_results);
     println!("CCSD(T) Perturb Energy (naive algorithm): {}", ccsdt_results.e_corr_pt);
 
+    // pyscf reference:
+    // mf_cc.ccsd_t()
+    assert!((ccsdt_results.e_corr_pt - (-0.0069126908356167)).abs() < 1e-6);
+
     println!("======");
 
     let ccsdt_results = ri_rccsdt_slow::get_riccsd_pt_energy(&ccsd_info, &ccsd_intrm, &ccsd_results);
     println!("CCSD(T) Perturb Energy (slow  algorithm): {}", ccsdt_results.e_corr_pt);
+    assert!((ccsdt_results.e_corr_pt - (-0.0069126908356167)).abs() < 1e-6);
 
     println!("======");
 
     let ccsdt_results = ri_rccsdt::get_riccsd_pt_energy(&ccsd_info, &ccsd_intrm, &ccsd_results);
     println!("CCSD(T) Perturb Energy (fast  algorithm): {}", ccsdt_results.e_corr_pt);
+    assert!((ccsdt_results.e_corr_pt - (-0.0069126908356167)).abs() < 1e-6);
 }
 
 #[test]
