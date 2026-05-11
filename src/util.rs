@@ -4,7 +4,7 @@ use crate::prelude::*;
 ///
 /// # Usage
 ///
-/// ```norun
+/// ```no_run
 /// let tsr = intor_row_major(&cint_data, "int1e_kin");
 /// ```
 pub fn intor_row_major(cint_data: &CInt, intor: &str) -> Tsr {

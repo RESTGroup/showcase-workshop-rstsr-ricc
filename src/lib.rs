@@ -62,8 +62,16 @@ fn playground_ri_ccsd() {
 fn playground_ri_ccsdt() {
     use crate::prelude::*;
 
-    let cint_data = CInt::from_json("assets/h2o-tzvp.json");
-    let aux_cint_data = CInt::from_json("assets/h2o-def2_jk.json");
+    let h2o_tzvp_initializer = r#"
+        atom = "O; H 1 0.94; H 1 0.94 2 104.5"
+        basis = "def2-tzvp"
+    "#;
+    let h2o_def2_jk_initializer = r#"
+        atom = "O; H 1 0.94; H 1 0.94 2 104.5"
+        basis = "def2-universal-jkfit"
+    "#;
+    let cint_data = CIntMol::from_toml(h2o_tzvp_initializer).cint;
+    let aux_cint_data = CIntMol::from_toml(h2o_def2_jk_initializer).cint;
     let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &aux_cint_data);
 
     let ccsd_info = RCCSDInfo {
