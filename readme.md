@@ -12,9 +12,15 @@
 >
 > 即使该仓库只是演示用途，相同算法、给足内存资源的前提下，程序的运行效率应已达到或超过目前主流计算化学程序。
 
-**目前该仓库尚未完成。**
+## 编译与测试
 
-待完成目标：
-- [x] CLI 与二进制文件
-- [ ] 标准编译与运行流程 (Github Action)
-- [ ] 说明文档
+```bash
+cargo build
+cargo test --lib -- playground_ri_ccsdt --exact --nocapture
+```
+
+该项目由于开发过程也需要关注效率，因此在 debug 下仍然开启了 `opt-level=2` 优化选项。上述编译后的程序效率与 release 没有明显差异。
+
+上述程序测试的是水分子 def2-TZVP 基组下的 RI-RCCSD(T) 能量计算。
+
+该编译流程会从 github 上下载电子积分库 libcint 并作静态链接 (static linking)。如果 github 下载较慢，可以先下载好 libcint 的源码，并声明到环境变量 `CINT_SRC`。

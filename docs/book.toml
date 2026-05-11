@@ -1,7 +1,6 @@
 [book]
 authors = ["ajz34"]
 language = "zh-hans"
-multilingual = false
 src = "src"
 title = "REST Workshop 一 Rust 语言计算化学开发演示"
 
