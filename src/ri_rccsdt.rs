@@ -96,9 +96,9 @@ fn ccsd_t_energy_contribution(
     )
     .fold(0.0, |acc, (((i, j), k), &w_val, &d_ijk, &tr_012, &tr_120, &tr_201, &tr_210, &tr_021, &tr_102)| unsafe {
         let v_val = w_val
-            + t1_t_a.raw()[i] * eri_vvoo_t_bc.index_uncheck([j, k])
-            + t1_t_b.raw()[j] * eri_vvoo_t_ca.index_uncheck([k, i])
-            + t1_t_c.raw()[k] * eri_vvoo_t_ab.index_uncheck([i, j]);
+            + t1_t_a.index_uncheck([i]) * eri_vvoo_t_bc.index_uncheck([j, k])
+            + t1_t_b.index_uncheck([j]) * eri_vvoo_t_ca.index_uncheck([k, i])
+            + t1_t_c.index_uncheck([k]) * eri_vvoo_t_ab.index_uncheck([i, j]);
         let z_val =
             4.0 * w_raw[tr_012] + w_raw[tr_120] + w_raw[tr_201] - 2.0 * (w_raw[tr_210] + w_raw[tr_021] + w_raw[tr_102]);
         let d_val = d_abc + d_ijk;
