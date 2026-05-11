@@ -62,6 +62,9 @@ fn playground_ri_ccsd() {
 fn playground_ri_ccsdt() {
     use crate::prelude::*;
 
+    // If `pip install basis-set-exchange` performed,
+    // you can also run the following code to generate the input data:
+    /*
     let h2o_tzvp_initializer = r#"
         atom = "O; H 1 0.94; H 1 0.94 2 104.5"
         basis = "def2-tzvp"
@@ -72,6 +75,10 @@ fn playground_ri_ccsdt() {
     "#;
     let cint_data = CIntMol::from_toml(h2o_tzvp_initializer).cint;
     let aux_cint_data = CIntMol::from_toml(h2o_def2_jk_initializer).cint;
+    */
+
+    let cint_data = init_h2o_def2_tzvp();
+    let aux_cint_data = init_h2o_def2_jk();
     let rhf_results = ri_rhf::minimal_ri_rhf(&cint_data, &aux_cint_data);
 
     // pyscf reference:
